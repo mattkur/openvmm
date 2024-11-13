@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+use crate::queue_pair::QueuePair;
 use crate::NvmeDriver;
 use chipset_device::mmio::ExternallyManagedMmioIntercepts;
 use disk_ramdisk::RamDisk;
@@ -22,6 +23,7 @@ use vmcore::vm_task::VmTaskDriverSource;
 async fn test_nvme_driver(driver: DefaultDriver) {
     let base_len = 64 << 20;
     let payload_len = 1 << 20;
+    let nscount = 255;
     let mem = DeviceSharedMemory::new(base_len, payload_len);
     let payload_mem = mem
         .guest_memory()
@@ -43,86 +45,94 @@ async fn test_nvme_driver(driver: DefaultDriver) {
             subsystem_id: Guid::new_random(),
         },
     );
-    nvme.client()
-        .add_namespace(1, Arc::new(RamDisk::new(1 << 20, false).unwrap()))
-        .await
-        .unwrap();
 
+    for nsid in 1..nscount {
+        nvme.client()
+            .add_namespace(nsid, Arc::new(RamDisk::new(1 << 20, false).unwrap()))
+            .await
+            .unwrap();
+    }
     let device = EmulatedDevice::new(nvme, msi_set, mem);
 
     let driver = NvmeDriver::new(&driver_source, 64, device).await.unwrap();
 
-    let namespace = driver.namespace(1).await.unwrap();
+    let mut fell_back = false;
+    for nsid in 1..nscount {
+        let namespace = driver.namespace(nsid).await.unwrap();
 
-    payload_mem.write_at(0, &[0xcc; 8192]).unwrap();
-    namespace
-        .write(
-            0,
-            1,
-            2,
-            false,
-            &payload_mem,
-            buf_range.buffer(&payload_mem).range(),
-        )
-        .await
-        .unwrap();
+        payload_mem.write_at(0, &[0xcc; 8192]).unwrap();
+        namespace
+            .write(
+                0,
+                1,
+                2,
+                false,
+                &payload_mem,
+                buf_range.buffer(&payload_mem).range(),
+            )
+            .await
+            .unwrap();
 
-    namespace
-        .read(
-            1,
-            0,
-            32,
-            &payload_mem,
-            buf_range.buffer(&payload_mem).range(),
-        )
-        .await
-        .unwrap();
-    let mut v = [0; 4096];
-    payload_mem.read_at(0, &mut v).unwrap();
-    assert_eq!(&v[..512], &[0; 512]);
-    assert_eq!(&v[512..1536], &[0xcc; 1024]);
-    assert!(v[1536..].iter().all(|&x| x == 0));
+        namespace
+            .read(
+                1,
+                0,
+                32,
+                &payload_mem,
+                buf_range.buffer(&payload_mem).range(),
+            )
+            .await
+            .unwrap();
+        let mut v = [0; 4096];
+        payload_mem.read_at(0, &mut v).unwrap();
+        assert_eq!(&v[..512], &[0; 512]);
+        assert_eq!(&v[512..1536], &[0xcc; 1024]);
+        assert!(v[1536..].iter().all(|&x| x == 0));
 
-    namespace
-        .deallocate(
-            0,
-            &[
-                DsmRange {
-                    context_attributes: 0,
-                    starting_lba: 1000,
-                    lba_count: 2000,
-                },
-                DsmRange {
-                    context_attributes: 0,
-                    starting_lba: 2,
-                    lba_count: 2,
-                },
-            ],
-        )
-        .await
-        .unwrap();
+        namespace
+            .deallocate(
+                0,
+                &[
+                    DsmRange {
+                        context_attributes: 0,
+                        starting_lba: 1000,
+                        lba_count: 2000,
+                    },
+                    DsmRange {
+                        context_attributes: 0,
+                        starting_lba: 2,
+                        lba_count: 2,
+                    },
+                ],
+            )
+            .await
+            .unwrap();
 
-    assert_eq!(driver.fallback_cpu_count(), 0);
+        if !fell_back {
+            assert_eq!(driver.fallback_cpu_count(), 0);
+        }
 
-    // Test the fallback queue functionality.
-    namespace
-        .read(
-            63,
-            0,
-            32,
-            &payload_mem,
-            buf_range.buffer(&payload_mem).range(),
-        )
-        .await
-        .unwrap();
+        // Test the fallback queue functionality.
+        namespace
+            .read(
+                63,
+                0,
+                32,
+                &payload_mem,
+                buf_range.buffer(&payload_mem).range(),
+            )
+            .await
+            .unwrap();
 
-    assert_eq!(driver.fallback_cpu_count(), 1);
+        assert_eq!(driver.fallback_cpu_count(), 1);
+        fell_back = true;
 
-    let mut v = [0; 4096];
-    payload_mem.read_at(0, &mut v).unwrap();
-    assert_eq!(&v[..512], &[0; 512]);
-    assert_eq!(&v[512..1024], &[0xcc; 512]);
-    assert!(v[1024..].iter().all(|&x| x == 0));
+        let mut v = [0; 4096];
+        payload_mem.read_at(0, &mut v).unwrap();
+        assert_eq!(&v[..512], &[0; 512]);
+        assert_eq!(&v[512..1024], &[0xcc; 512]);
+        assert!(v[1024..].iter().all(|&x| x == 0));
+    }
 
     driver.shutdown().await;
 }
