@@ -54,10 +54,17 @@ In the future, it is likely that this step will be folded into the
 
 ```bash
 $ sudo apt install \
-  binutils              \
-  build-essential       \
-  gcc-aarch64-linux-gnu \
-  libssl-dev
+  binutils                  \
+  binutils-x86-64-linux-gnu \
+  build-essential           \
+  clang-tools-14            \
+  gcc-aarch64-linux-gnu     \
+  lbzip2                    \
+  lcov                      \
+  libarchive-tools          \
+  libssl-dev                \
+  lld-14                    \
+  python3
 ```
 
 ## Cloning the OpenVMM source
