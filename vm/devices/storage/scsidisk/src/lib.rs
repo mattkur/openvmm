@@ -1149,6 +1149,12 @@ impl SimpleScsiDisk {
         // Note that `p.tx` is validated above to be in range.
         let external_data = external_data.subrange(0, p.tx);
 
+        tracing::debug!(
+            "handle_data_cdb, request = {:x?} external_data = {:x?}",
+            request,
+            external_data
+        );
+
         Ok(if is_read {
             self.disk
                 .read_vectored(&external_data, p.offset)

@@ -107,6 +107,8 @@ impl PendingCommands {
             command: *command,
             respond,
         });
+
+        tracing::debug!("NVME::Request cid={:?} command={:x?}", cid, command);
     }
 
     fn remove(&mut self, cid: u16) -> mesh::OneshotSender<spec::Completion> {
@@ -489,6 +491,7 @@ impl Issuer {
 
                 let prp_addr = prp.physical_address(0);
                 let page = prp.page_as_slice(0);
+                tracing::debug!("prp_addr={:?}", prp_addr);
                 for (iova, dest) in iovas.zip(page.chunks_exact(8)) {
                     dest.atomic_write_obj(&iova.to_le_bytes());
                 }
