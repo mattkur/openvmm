@@ -38,7 +38,7 @@ use vmbus_ring::PAGE_SIZE;
 use zerocopy::AsBytes;
 use zerocopy::FromZeroes;
 
-pub(crate) struct TestWorker {
+pub struct TestWorker {
     task: Task<Result<(), WorkerError>>,
 }
 
@@ -164,7 +164,7 @@ pub(crate) fn parse_guest_enumerate_bus<T: ring::RingMem>(
     }
 }
 
-pub(crate) struct TestGuest {
+pub struct TestGuest {
     pub queue: Queue<FlatRingMem>,
     pub transaction_id: u64,
 }
@@ -343,7 +343,7 @@ impl TestGuest {
     }
 
     // Send protocol negotiation packets for a test guest.
-    pub(crate) async fn perform_protocol_negotiation(&mut self) {
+    pub async fn perform_protocol_negotiation(&mut self) {
         let negotiate_packet = protocol::Packet {
             operation: protocol::Operation::BEGIN_INITIALIZATION,
             flags: 0,

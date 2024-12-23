@@ -5,6 +5,7 @@
 
 pub mod srb;
 
+use arbitrary::Arbitrary;
 use bitfield_struct::bitfield;
 use core::fmt::Debug;
 use open_enum::open_enum;
@@ -712,7 +713,7 @@ pub const SCSI_SENSEQ_INCOMPATIBLE_FORMAT: u8 = 0x02;
 pub const SCSI_SENSEQ_OPERATING_DEFINITION_CHANGED: u8 = 0x02;
 
 open_enum! {
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(Arbitrary, AsBytes, FromBytes, FromZeroes)]
     pub enum ScsiStatus: u8 {
         GOOD = 0x00,
         CHECK_CONDITION = 0x02,

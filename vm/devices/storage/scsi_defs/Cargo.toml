@@ -10,6 +10,7 @@ rust-version.workspace = true
 zerocopy.workspace = true
 bitfield-struct.workspace = true
 open_enum.workspace = true
+arbitrary = { workspace = true, features = ["derive"] }
 
 [lints]
 workspace = true
