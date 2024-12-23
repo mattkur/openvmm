@@ -2141,6 +2141,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuzz_storvsp"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "arbitrary",
+ "disklayer_ram",
+ "guestmem",
+ "guid",
+ "libfuzzer-sys",
+ "pal_async",
+ "parking_lot",
+ "scsi_buffers",
+ "scsidisk",
+ "storvsp",
+ "storvsp_resources",
+ "vmbus_async",
+ "vmbus_channel",
+ "vmcore",
+ "xtask_fuzz",
+ "zerocopy",
+]
+
+[[package]]
 name = "fuzz_ucs2"
 version = "0.0.0"
 dependencies = [
@@ -6162,6 +6185,7 @@ name = "storvsp"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "arbitrary",
  "async-trait",
  "criterion",
  "disklayer_ram",
