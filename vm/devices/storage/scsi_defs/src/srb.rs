@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+use arbitrary::Arbitrary;
 use bitfield_struct::bitfield;
 use open_enum::open_enum;
 use zerocopy::AsBytes;
@@ -8,7 +9,7 @@ use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
 #[bitfield(u8)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(Arbitrary, AsBytes, FromBytes, FromZeroes)]
 pub struct SrbStatusAndFlags {
     #[bits(6)]
     status_bits: u8,
