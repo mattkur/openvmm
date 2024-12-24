@@ -2158,6 +2158,7 @@ dependencies = [
  "storvsp_resources",
  "vmbus_async",
  "vmbus_channel",
+ "vmbus_ring",
  "vmcore",
  "xtask_fuzz",
  "zerocopy",
