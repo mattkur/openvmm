@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+use arbitrary::Arbitrary;
 use guid::Guid;
 use mesh::payload::Protobuf;
 use mesh::rpc::FailableRpc;
@@ -16,7 +17,7 @@ use vm_resource::Resource;
 use vm_resource::ResourceId;
 
 /// A path at which to enumerate a SCSI logical unit.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Protobuf)]
+#[derive(Arbitrary, Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Protobuf)]
 pub struct ScsiPath {
     /// The SCSI path number.
     pub path: u8,

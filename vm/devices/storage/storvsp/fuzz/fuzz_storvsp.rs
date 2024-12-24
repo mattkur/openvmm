@@ -18,55 +18,59 @@ use storvsp_resources::ScsiPath;
 use vmbus_async::queue::Queue;
 use vmbus_channel::connected_async_channels;
 //use vmcore::vm_task::{SingleDriverBackend, VmTaskDriverSource};
+use std::sync::mpsc::channel;
 use xtask_fuzz::fuzz_eprintln;
 use zerocopy::AsBytes;
 
-// Anything consumed by EmulatedDeviceFuzzer needs to be static because of DeviceBacking trait.
-pub static RAW_DATA: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+// // Anything consumed by EmulatedDeviceFuzzer needs to be static because of DeviceBacking trait.
+// pub static RAW_DATA: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 
-/// Returns an arbitrary data of type T or a NotEnoughData error. Generic type must
-/// implement Arbitrary (for any lifetime 'a) and the Sized traits.
-pub fn arbitrary_data<T>() -> Result<T, arbitrary::Error>
-where
-    for<'a> T: Arbitrary<'a> + Sized,
-{
-    let mut raw_data = RAW_DATA.lock();
-    let input = raw_data.split_off(0); // Take all raw_data
-    let mut u = Unstructured::new(&input);
+// /// Returns an arbitrary data of type T or a NotEnoughData error. Generic type must
+// /// implement Arbitrary (for any lifetime 'a) and the Sized traits.
+// pub fn arbitrary_data<T>() -> Result<T, arbitrary::Error>
+// where
+//     for<'a> T: Arbitrary<'a> + Sized,
+// {
+//     let mut raw_data = RAW_DATA.lock();
+//     let input = raw_data.split_off(0); // Take all raw_data
+//     let mut u = Unstructured::new(&input);
 
-    if u.is_empty() {
-        return Err(arbitrary::Error::NotEnoughData);
-    }
+//     if u.is_empty() {
+//         return Err(arbitrary::Error::NotEnoughData);
+//     }
 
-    // If bytes needed is more than remaining bytes it will pad with 0s.
-    let arbitrary_type: T = u.arbitrary()?;
+//     // If bytes needed is more than remaining bytes it will pad with 0s.
+//     let arbitrary_type: T = u.arbitrary()?;
 
-    let x = u.take_rest().to_vec();
-    *raw_data = x;
-    Ok(arbitrary_type)
+//     let x = u.take_rest().to_vec();
+//     *raw_data = x;
+//     Ok(arbitrary_type)
+// }
+
+#[derive(Arbitrary, Debug)]
+struct StaticFuzzConfig {
+    foo: u32,
 }
 
-fn do_fuzz() -> Result<(), anyhow::Error> {
+fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
     fuzz_eprintln!("repro-ing test case...");
 
     DefaultPool::run_with(|driver| async move {
         // set up the channels and worker
-        let (host, guest) = connected_async_channels(16 * 1024); // TODO: [use-arbitrary-input]
+        let channel_count = u.int_in_range(16..=64)?; // TODO: figure out why this needs 16K minimum space, it seems.
+        let (host, guest) = connected_async_channels(channel_count * 1024);
         let guest_queue = Queue::new(guest).unwrap();
 
-        let test_guest_mem = GuestMemory::allocate(16384); // TODO: [use-arbitrary-input]
+        let guest_mem_pages = u.int_in_range(1..=64)?;
+        let test_guest_mem = GuestMemory::allocate(guest_mem_pages * 4096); // TODO: [use-arbitrary-input]
         let controller = ScsiController::new();
+        let disk_len_sectors = u.int_in_range(1..=40960)?;
         let disk = scsidisk::SimpleScsiDisk::new(
-            disklayer_ram::ram_disk(10 * 1024 * 1024, false).unwrap(), // TODO: [use-arbitrary-input]
+            disklayer_ram::ram_disk(disk_len_sectors * 512, false).unwrap(), // TODO: [use-arbitrary-input]
             Default::default(),
         );
         controller.attach(
-            // TODO: [use-arbitrary-input]
-            ScsiPath {
-                path: 0,
-                target: 0,
-                lun: 0,
-            },
+            ScsiPath::arbitrary(u)?,
             ScsiControllerDisk::new(Arc::new(disk)),
         )?;
 
@@ -86,7 +90,7 @@ fn do_fuzz() -> Result<(), anyhow::Error> {
         // TODO: Decide whether to do protocol nogotiation or not based on arbitrary.
         guest.perform_protocol_negotiation().await;
 
-        if let Ok(packet) = arbitrary_data::<storvsp::protocol::Packet>() {
+        if let Ok(packet) = storvsp::protocol::Packet::arbitrary(u) {
             let _ = guest.send_data_packet_sync(&[packet.as_bytes()]).await;
         }
 
@@ -96,15 +100,15 @@ fn do_fuzz() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fuzz_target!(|input: Vec<u8>| -> libfuzzer_sys::Corpus {
+fuzz_target!(|input: &[u8]| -> libfuzzer_sys::Corpus {
     xtask_fuzz::init_tracing_if_repro();
 
-    {
-        let mut raw_data = RAW_DATA.lock();
-        *raw_data = input;
-    }
+    // {
+    //     let mut raw_data = RAW_DATA.lock();
+    //     *raw_data = input;
+    // }
 
-    if do_fuzz().is_err() {
+    if do_fuzz(&mut Unstructured::new(input)).is_err() {
         libfuzzer_sys::Corpus::Reject
     } else {
         libfuzzer_sys::Corpus::Keep
