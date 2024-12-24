@@ -57,7 +57,8 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
 
     DefaultPool::run_with(|driver| async move {
         // set up the channels and worker
-        let channel_count = u.int_in_range(16..=64)?; // TODO: figure out why this needs 16K minimum space, it seems.
+        //let channel_count = u.int_in_range(16..=17)?; // TODO: figure out why this needs 16K  space, it seems.
+        let channel_count = 16;
         let (host, guest) = connected_async_channels(channel_count * 1024);
         let guest_queue = Queue::new(guest).unwrap();
 
@@ -90,8 +91,10 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
         // TODO: Decide whether to do protocol nogotiation or not based on arbitrary.
         guest.perform_protocol_negotiation().await;
 
-        if let Ok(packet) = storvsp::protocol::Packet::arbitrary(u) {
-            let _ = guest.send_data_packet_sync(&[packet.as_bytes()]).await;
+        while !u.is_empty() {
+            if let Ok(packet) = storvsp::protocol::Packet::arbitrary(u) {
+                let _ = guest.send_data_packet_sync(&[packet.as_bytes()]).await;
+            }
         }
 
         Ok::<(), anyhow::Error>(())
