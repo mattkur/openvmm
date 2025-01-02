@@ -7,6 +7,7 @@ use crate::init_openvmm_magicpath_linux_test_kernel::OpenvmmLinuxTestKernelArch;
 use crate::init_openvmm_magicpath_openhcl_sysroot::OpenvmmSysrootArch;
 use crate::run_cargo_build::common::CommonArch;
 use flowey::node::prelude::*;
+use flowey_lib_common::download_cargo_fuzz;
 
 flowey_request! {
     pub struct Request{
@@ -26,12 +27,15 @@ impl SimpleFlowNode for Node {
         ctx.import::<crate::init_openvmm_magicpath_openhcl_sysroot::Node>();
         ctx.import::<crate::init_openvmm_magicpath_protoc::Node>();
         ctx.import::<crate::init_openvmm_magicpath_uefi_mu_msvm::Node>();
+        ctx.import::<download_cargo_fuzz::Node>();
     }
 
     fn process_request(request: Self::Request, ctx: &mut NodeCtx<'_>) -> anyhow::Result<()> {
         let Request { arch, done } = request;
 
-        let mut deps = vec![ctx.reqv(crate::init_openvmm_magicpath_protoc::Request)];
+        let mut deps = vec![
+            ctx.reqv(crate::init_openvmm_magicpath_protoc::Request),
+            ctx.reqv(download_cargo_fuzz::Request::InstallWithCargo)];
 
         match arch {
             CommonArch::X86_64 => {
