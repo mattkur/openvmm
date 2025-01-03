@@ -15,14 +15,14 @@ use std::sync::Arc;
 use storvsp::protocol;
 use storvsp::test_helpers::TestGuest;
 use storvsp::test_helpers::TestWorker;
-use storvsp::{ScsiController, ScsiControllerDisk};
+use storvsp::ScsiController;
+use storvsp::ScsiControllerDisk;
 use storvsp_resources::ScsiPath;
 use vmbus_async::queue::OutgoingPacket;
 use vmbus_async::queue::Queue;
 use vmbus_channel::connected_async_channels;
 use vmbus_ring::OutgoingPacketType;
 use vmbus_ring::PAGE_SIZE;
-use xtask_fuzz::fuzz_eprintln;
 use zerocopy::AsBytes;
 use zerocopy::FromZeroes;
 
@@ -48,6 +48,8 @@ fn arbitrary_byte_len(u: &mut Unstructured<'_>) -> Result<usize, arbitrary::Erro
     u.int_in_range(0..=max_byte_len)
 }
 
+// Sends a GPA direct packet (a type of vmbus packet that references guest memory,
+// the typical packet type used for SCSI requests) to storvsp.
 async fn send_gpa_direct_packet(
     guest: &mut TestGuest,
     payload: &[&[u8]],
@@ -80,6 +82,10 @@ async fn send_gpa_direct_packet(
         .map_err(|e| e.into())
 }
 
+// Send a reasonably well structured read or write packet to storvsp.
+// While the fuzzer should eventually discover these paths by poking at
+// arbitrary GpaDirect packet payload, make the search more efficient by
+// generating a packet that is more likely to pass basic parsing checks.
 async fn send_arbitrary_readwrite_packet(
     u: &mut Unstructured<'_>,
     guest: &mut TestGuest,
@@ -106,6 +112,7 @@ async fn send_arbitrary_readwrite_packet(
         ..FromZeroes::new_zeroed()
     };
 
+    // TODO: [use-arbitrary-input]
     let mut scsi_req = protocol::ScsiRequest {
         target_id: path.target,
         path_id: path.path,
@@ -131,16 +138,12 @@ async fn send_arbitrary_readwrite_packet(
 }
 
 fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
-    fuzz_eprintln!("repro-ing test case...");
-
     DefaultPool::run_with(|driver| async move {
-        // set up the channels and worker
         let channel_count = 16; // TODO: [use-arbitrary-input] (figure out why this needs 16K  space, it seems.)
         let (host, guest_channel) = connected_async_channels(channel_count * 1024);
         let guest_queue = Queue::new(guest_channel).unwrap();
 
-        let guest_mem_pages = u.int_in_range(1..=256)?;
-        let test_guest_mem = GuestMemory::allocate(guest_mem_pages * 4096);
+        let test_guest_mem = GuestMemory::allocate(u.int_in_range(1..=256)? * PAGE_SIZE);
         let controller = ScsiController::new();
         let disk_len_sectors = u.int_in_range(1..=1048576)?; // up to 512mb in 512 byte sectors
         let disk = scsidisk::SimpleScsiDisk::new(
@@ -217,7 +220,7 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
     Ok::<(), anyhow::Error>(())
 }
 
-fuzz_target!(|input: &[u8]| -> libfuzzer_sys::Corpus {
+fuzz_target!(|input: &[u8]| {
     xtask_fuzz::init_tracing_if_repro();
 
     let _ = do_fuzz(&mut Unstructured::new(input));
@@ -225,5 +228,4 @@ fuzz_target!(|input: &[u8]| -> libfuzzer_sys::Corpus {
     // Always keep the corpus, since errors are a reasonable outcome.
     // A future optimization would be to reject any corpus entries that
     // result in the inability to generate arbitrary data from the Unstructured...
-    libfuzzer_sys::Corpus::Keep
 });
