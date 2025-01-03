@@ -76,17 +76,6 @@ pub struct Packet {
     pub status: NtStatus,
 }
 
-// #[cfg(feature = "arbitrary")]
-// impl<'a> arbitrary::Arbitrary<'a> for Packet {
-//     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-//         Ok(Packet {
-//             operation: u.arbitrary()?,
-//             flags: u.arbitrary()?,
-//             status: u.arbitrary()?,
-//         })
-//     }
-// }
-
 open_enum! {
     #[derive(Arbitrary, AsBytes, FromBytes, FromZeroes)]
     pub enum Operation: u32 {

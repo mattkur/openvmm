@@ -5,6 +5,7 @@
 
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
+use guestmem::ranges::PagedRange;
 use guestmem::GuestMemory;
 use libfuzzer_sys::fuzz_target;
 use pal_async::DefaultPool;
@@ -14,11 +15,9 @@ use storvsp::protocol::ScsiRequest;
 use storvsp::test_helpers::TestGuest;
 use storvsp::test_helpers::TestWorker;
 use storvsp::{ScsiController, ScsiControllerDisk};
-use storvsp_resources::ScsiPath;
-use vmbus_channel::connected_async_channels;
-use guestmem::ranges::PagedRange;
 use vmbus_async::queue::OutgoingPacket;
 use vmbus_async::queue::Queue;
+use vmbus_channel::connected_async_channels;
 use vmbus_ring::OutgoingPacketType;
 use vmbus_ring::PAGE_SIZE;
 use xtask_fuzz::fuzz_eprintln;
@@ -39,7 +38,8 @@ enum FuzzOutgoingPacketType {
 }
 
 fn page_add(offset: u64, len: u64) -> Option<u64> {
-    offset.checked_add(len)?
+    offset
+        .checked_add(len)?
         .checked_add(PAGE_SIZE as u64)?
         .checked_sub(1)?
         .checked_div(PAGE_SIZE as u64)
@@ -51,8 +51,8 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
     DefaultPool::run_with(|driver| async move {
         // set up the channels and worker
         let channel_count = 16; // TODO: [use-arbitrary-input] (figure out why this needs 16K  space, it seems.)
-        let (host, guest) = connected_async_channels(channel_count * 1024);
-        let guest_queue = Queue::new(guest).unwrap();
+        let (host, guest_channel) = connected_async_channels(channel_count * 1024);
+        let guest_queue = Queue::new(guest_channel).unwrap();
 
         let guest_mem_pages = u.int_in_range(1..=256)?;
         let test_guest_mem = GuestMemory::allocate(guest_mem_pages * 4096); // TODO: [use-arbitrary-input]
@@ -62,10 +62,7 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
             disklayer_ram::ram_disk(disk_len_sectors * 512, false).unwrap(), // TODO: [use-arbitrary-input]
             Default::default(),
         );
-        controller.attach(
-            ScsiPath::arbitrary(u)?,
-            ScsiControllerDisk::new(Arc::new(disk)),
-        )?;
+        controller.attach(u.arbitrary()?, ScsiControllerDisk::new(Arc::new(disk)))?;
 
         let _test_worker = TestWorker::start(
             controller.state.clone(),
@@ -80,16 +77,19 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
             transaction_id: 0,
         };
 
+        if u.ratio(9, 10)? {
+            guest.perform_protocol_negotiation().await;
+        }
+
         while !u.is_empty() {
             let action = u.arbitrary::<StovspFuzzAction>()?;
             match action {
                 StovspFuzzAction::SendDataPacket => {
-                    if let Ok(packet) = Packet::arbitrary(u) {
-                        let _ = guest.send_data_packet_sync(&[packet.as_bytes()]).await;
-                    }
+                    let packet = u.arbitrary::<Packet>()?;
+                    let _ = guest.send_data_packet_sync(&[packet.as_bytes()]).await;
                 }
                 StovspFuzzAction::SendRawPacket => {
-                    let packet_type = FuzzOutgoingPacketType::arbitrary(u)?;
+                    let packet_type = u.arbitrary()?;
                     match packet_type {
                         FuzzOutgoingPacketType::InBandNoCompletion => {
                             let packet = OutgoingPacket {
@@ -123,7 +123,7 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
                             // limit the byte length to something that will fit
                             // into the collection of gpns below.
                             let max_byte_len = u.arbitrary_len::<u64>()? * PAGE_SIZE;
-                            let byte_len : usize = u.int_in_range(0..=max_byte_len)?;
+                            let byte_len: usize = u.int_in_range(0..=max_byte_len)?;
 
                             let start_page: u64 = gpa_start / PAGE_SIZE as u64;
                             if let Some(end_page) = page_add(start_page, byte_len as u64) {
@@ -133,8 +133,8 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
                                     byte_len,
                                     gpns.as_slice(),
                                 ) {
-                                    let header = Packet::arbitrary(u)?;
-                                    let scsi_req = ScsiRequest::arbitrary(u)?;
+                                    let header = u.arbitrary::<Packet>()?;
+                                    let scsi_req = u.arbitrary::<ScsiRequest>()?;
                                     guest
                                         .queue
                                         .split()
@@ -146,10 +146,10 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
                                         })
                                         .await?
                                 } else {
-                                    anyhow::bail!("invalid page")
+                                    anyhow::bail!("failed to create PagedRange");
                                 }
                             } else {
-                                anyhow::bail!("invalid page")
+                                anyhow::bail!("failed to calculate end_page");
                             }
                         }
                     }
@@ -157,7 +157,7 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
             }
         }
 
-        Ok::<(), anyhow::Error>(())
+        Ok(())
     })?;
 
     Ok(())
@@ -166,9 +166,10 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
 fuzz_target!(|input: &[u8]| -> libfuzzer_sys::Corpus {
     xtask_fuzz::init_tracing_if_repro();
 
-    if do_fuzz(&mut Unstructured::new(input)).is_err() {
-        libfuzzer_sys::Corpus::Reject
-    } else {
-        libfuzzer_sys::Corpus::Keep
-    }
+    let _ = do_fuzz(&mut Unstructured::new(input));
+
+    // Always keep the corpus, since errors are a reasonable outcome.
+    // A future optimization would be to reject any corpus entries that
+    // result in the inability to generate arbitrary data from the Unstructured...
+    libfuzzer_sys::Corpus::Keep
 });
