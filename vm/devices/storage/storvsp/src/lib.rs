@@ -1550,7 +1550,7 @@ pub struct ScsiControllerState {
 }
 
 pub struct ScsiController {
-    pub state: Arc<ScsiControllerState>,
+    state: Arc<ScsiControllerState>,
 }
 
 impl ScsiController {
@@ -1735,6 +1735,17 @@ mod tests {
     use test_with_tracing::test;
     use vmbus_channel::connected_async_channels;
 
+    // Discourage `Clone` for `ScsiController` outside the crate, but it is
+    // necessary for testing. The fuzzer also uses `TestWorker`, which needs
+    // a `clone` of the inner state, but is not in this crate.
+    impl Clone for ScsiController {
+        fn clone(&self) -> Self {
+            ScsiController {
+                state: self.state.clone(),
+            }
+        }
+    }
+
     #[async_test]
     async fn test_channel_working(driver: DefaultDriver) {
         // set up the channels and worker
@@ -1759,7 +1770,7 @@ mod tests {
             .unwrap();
 
         let test_worker = TestWorker::start(
-            controller.state.clone(),
+            controller.clone(),
             driver.clone(),
             test_guest_mem.clone(),
             host,
@@ -1814,7 +1825,7 @@ mod tests {
         let controller = ScsiController::new();
 
         let _worker = TestWorker::start(
-            controller.state.clone(),
+            controller.clone(),
             driver.clone(),
             test_guest_mem,
             host,
@@ -1885,7 +1896,7 @@ mod tests {
         let controller = ScsiController::new();
 
         let _worker = TestWorker::start(
-            controller.state.clone(),
+            controller.clone(),
             driver.clone(),
             test_guest_mem,
             host,
@@ -1935,7 +1946,7 @@ mod tests {
         let controller = ScsiController::new();
 
         let worker = TestWorker::start(
-            controller.state.clone(),
+            controller.clone(),
             driver.clone(),
             test_guest_mem,
             host,
@@ -1975,7 +1986,7 @@ mod tests {
         let controller = ScsiController::new();
 
         let _worker = TestWorker::start(
-            controller.state.clone(),
+            controller.clone(),
             driver.clone(),
             test_guest_mem,
             host,
@@ -2060,7 +2071,7 @@ mod tests {
         let controller = ScsiController::new();
 
         let _worker = TestWorker::start(
-            controller.state.clone(),
+            controller.clone(),
             driver.clone(),
             test_guest_mem,
             host,
@@ -2102,7 +2113,7 @@ mod tests {
         let controller = ScsiController::new();
 
         let test_worker = TestWorker::start(
-            controller.state.clone(),
+            controller.clone(),
             driver.clone(),
             test_guest_mem.clone(),
             host,
@@ -2283,7 +2294,7 @@ mod tests {
 
         let test_guest_mem = GuestMemory::allocate(16384);
         let worker = TestWorker::start(
-            controller.state.clone(),
+            controller.clone(),
             &driver,
             test_guest_mem.clone(),
             host,

@@ -65,7 +65,7 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
         controller.attach(u.arbitrary()?, ScsiControllerDisk::new(Arc::new(disk)))?;
 
         let _test_worker = TestWorker::start(
-            controller.state.clone(),
+            controller,
             driver.clone(),
             test_guest_mem.clone(),
             host,

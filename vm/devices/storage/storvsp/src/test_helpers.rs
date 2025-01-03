@@ -13,7 +13,7 @@ use crate::InitState;
 use crate::PacketError;
 use crate::Protocol;
 use crate::ProtocolState;
-use crate::ScsiControllerState;
+use crate::ScsiController;
 use crate::ScsiPath;
 use crate::Worker;
 use crate::WorkerError;
@@ -48,7 +48,7 @@ impl TestWorker {
     }
 
     pub fn start<T: ring::RingMem + 'static + Sync>(
-        controller: Arc<ScsiControllerState>,
+        controller: ScsiController,
         spawner: impl Spawn,
         mem: GuestMemory,
         channel: RawAsyncChannel<T>,
@@ -56,7 +56,7 @@ impl TestWorker {
     ) -> Self {
         let task = spawner.spawn("test", async move {
             let mut worker = Worker::new(
-                controller.clone(),
+                controller.state.clone(),
                 channel,
                 0,
                 mem,
