@@ -39,17 +39,17 @@ enum FuzzOutgoingPacketType {
     GpaDirectPacket,
 }
 
-// Return an arbitrary byte length that can be sent in a GPA direct
-// packet. The byte length is limited to the maximum number of pages
-// that could fit into a `PagedRange` (at least with how we store the
-// list of pages in the fuzzer ...).
+/// Return an arbitrary byte length that can be sent in a GPA direct
+/// packet. The byte length is limited to the maximum number of pages
+/// that could fit into a `PagedRange` (at least with how we store the
+/// list of pages in the fuzzer ...).
 fn arbitrary_byte_len(u: &mut Unstructured<'_>) -> Result<usize, arbitrary::Error> {
     let max_byte_len = u.arbitrary_len::<u64>()? * PAGE_SIZE;
     u.int_in_range(0..=max_byte_len)
 }
 
-// Sends a GPA direct packet (a type of vmbus packet that references guest memory,
-// the typical packet type used for SCSI requests) to storvsp.
+/// Sends a GPA direct packet (a type of vmbus packet that references guest memory,
+/// the typical packet type used for SCSI requests) to storvsp.
 async fn send_gpa_direct_packet(
     guest: &mut TestGuest,
     payload: &[&[u8]],
@@ -82,10 +82,10 @@ async fn send_gpa_direct_packet(
         .map_err(|e| e.into())
 }
 
-// Send a reasonably well structured read or write packet to storvsp.
-// While the fuzzer should eventually discover these paths by poking at
-// arbitrary GpaDirect packet payload, make the search more efficient by
-// generating a packet that is more likely to pass basic parsing checks.
+/// Send a reasonably well structured read or write packet to storvsp.
+/// While the fuzzer should eventually discover these paths by poking at
+/// arbitrary GpaDirect packet payload, make the search more efficient by
+/// generating a packet that is more likely to pass basic parsing checks.
 async fn send_arbitrary_readwrite_packet(
     u: &mut Unstructured<'_>,
     guest: &mut TestGuest,
@@ -112,7 +112,6 @@ async fn send_arbitrary_readwrite_packet(
         ..FromZeroes::new_zeroed()
     };
 
-    // TODO: [use-arbitrary-input]
     let mut scsi_req = protocol::ScsiRequest {
         target_id: path.target,
         path_id: path.path,
@@ -139,8 +138,7 @@ async fn send_arbitrary_readwrite_packet(
 
 fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
     DefaultPool::run_with(|driver| async move {
-        let channel_count = 16; // TODO: [use-arbitrary-input] (figure out why this needs 16K  space, it seems.)
-        let (host, guest_channel) = connected_async_channels(channel_count * 1024);
+        let (host, guest_channel) = connected_async_channels(16 * 1024); // TODO: [use-arbitrary-input]
         let guest_queue = Queue::new(guest_channel).unwrap();
 
         let test_guest_mem = GuestMemory::allocate(u.int_in_range(1..=256)? * PAGE_SIZE);
@@ -166,6 +164,7 @@ fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {
         };
 
         if u.ratio(9, 10)? {
+            // TODO: [use-arbitrary-input] (e.g., munge the negotiation packets)
             guest.perform_protocol_negotiation().await;
         }
 
