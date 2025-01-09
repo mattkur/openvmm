@@ -282,7 +282,7 @@ impl Future for ScsiRequest {
 }
 
 #[derive(Debug, Error)]
-enum WorkerError {
+pub enum WorkerError {
     #[error("packet error")]
     PacketError(#[source] PacketError),
     #[error("queue error")]
@@ -292,7 +292,7 @@ enum WorkerError {
 }
 
 #[derive(Debug, Error)]
-enum PacketError {
+pub enum PacketError {
     #[error("Not transactional")]
     NotTransactional,
     #[error("Unrecognized operation {0:?}")]
@@ -814,6 +814,8 @@ impl<T: 'static + Send + Sync + RingMem> AsyncRun<Worker<T>> for WorkerState {
                     tracing::debug!("subchannel waiting for initialization to end");
                     listener.await
                 };
+
+                tracing::trace!("worker about to process_ready");
                 worker
                     .inner
                     .process_ready(&mut worker.queue, protocol_version)
@@ -865,10 +867,12 @@ const MAX_VMBUS_PACKET_SIZE: usize =
 impl<T: RingMem> Worker<T> {
     /// Processes the protocol state machine.
     async fn process_primary(&mut self) -> Result<(), WorkerError> {
+        tracing::trace!("Worker::process_primary begin");
         loop {
             let current_state = *self.inner.protocol.state.read();
             match current_state {
                 ProtocolState::Ready { version, .. } => {
+                    tracing::trace!("ProtocolState::Ready Worker::process_primary begin");
                     break loop {
                         select_biased! {
                             r = self.inner.process_ready(&mut self.queue, version).fuse() => break r,
@@ -1057,6 +1061,7 @@ impl<T: RingMem> Worker<T> {
                                     // Wake up subchannels waiting for the
                                     // protocol state to become ready.
                                     self.inner.protocol.ready.notify(usize::MAX);
+                                    tracing::trace!("notify protocol ready");
                                 }
                                 _ => {
                                     tracelimit::warn_ratelimited!(?state, data = ?packet.data, "unexpected packet order");
@@ -1103,8 +1108,12 @@ impl WorkerInner {
         queue: &mut Queue<M>,
         protocol_version: Version,
     ) -> Result<(), WorkerError> {
+        tracing::trace!("in process_ready");
         self.request_size = protocol_version.max_request_size();
-        poll_fn(|cx| self.poll_process_ready(cx, queue)).await
+        let res = poll_fn(|cx| self.poll_process_ready(cx, queue)).await;
+        if let Err(ref e) = res { tracing::trace!("poll_process_ready error! {:?}", e); }
+        tracing::trace!("{} {}", res.is_err(), "process_ready exiting");
+        return res;
     }
 
     /// Processes packets and SCSI completions after protocol negotiation has finished.
@@ -1113,6 +1122,8 @@ impl WorkerInner {
         cx: &mut Context<'_>,
         queue: &mut Queue<M>,
     ) -> Poll<Result<(), WorkerError>> {
+
+        tracing::trace!("poll_process_ready");
         self.stats.wakes.increment();
 
         let (mut reader, mut writer) = queue.split();
@@ -1228,6 +1239,7 @@ impl WorkerInner {
             self.stats.wakes_spurious.increment();
         }
 
+        tracing::trace!("poll_process_ready returns pending");
         Poll::Pending
     }
 

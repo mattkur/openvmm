@@ -43,7 +43,7 @@ pub struct TestWorker {
 }
 
 impl TestWorker {
-    pub(crate) async fn teardown(self) -> Result<(), WorkerError> {
+    pub async fn teardown(self) -> Result<(), WorkerError> {
         self.task.await
     }
 
@@ -69,7 +69,14 @@ impl TestWorker {
                 None,
             )
             .unwrap();
-            worker.process_primary().await
+
+            tracing::trace!("worker about to process_primary");
+
+            let res = worker.process_primary().await;
+
+            tracing::trace!("worker process_primary done");
+
+            res
         });
 
         Self { task }
