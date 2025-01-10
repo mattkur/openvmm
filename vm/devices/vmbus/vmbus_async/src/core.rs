@@ -193,7 +193,9 @@ impl WriteState {
         core: &Core<M>,
         send_size: usize,
     ) -> Poll<Result<(), PollError>> {
+        tracing::trace!("poll_ready");
         while !self.ready {
+            tracing::trace!("poll_ready loop");
             // The ring buffer is believed to be full. Set the pending send size
             // before double checking the ring buffer.
             if self.pending_size < send_size {

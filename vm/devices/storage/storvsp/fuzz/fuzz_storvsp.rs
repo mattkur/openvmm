@@ -34,6 +34,11 @@ use vmbus_ring::RingMem;
 use vmbus_async::queue::WriteHalf;
 use vmbus_async::queue::TryReadError;
 use pal_async::task::Spawn;
+use futures::{
+    future::FutureExt, // for `.fuse()`
+    pin_mut,
+    select,
+};
 
 #[derive(Arbitrary)]
 enum StorvspFuzzAction {
@@ -107,14 +112,23 @@ async fn send_gpa_direct_packet(
     let res = write.try_write(&packet);
     xtask_fuzz::fuzz_eprintln!("try_write {:?}", res);
 
-    if !res.is_err() {
-        Write {
+        let res2 = Write {
             write: &mut write,
             packet,
-        }.await.map_err(|err| err.into())
-    } else {
-        res.map_err(|err| err.into())
-    }
+        }.await.map_err(|err| err.into());
+
+        xtask_fuzz::fuzz_eprintln!("write {:?}", res2);
+
+        return res2;
+
+    // if !res.is_err() {
+    //     Write {
+    //         write: &mut write,
+    //         packet,
+    //     }.await.map_err(|err| err.into())
+    // } else {
+    //     res.map_err(|err| err.into())
+    // }
 
     // probably should poll_write here
 
@@ -177,6 +191,87 @@ async fn send_arbitrary_readwrite_packet(
     .await
 }
 
+async fn f(u: &mut Unstructured<'_>, guest: &mut TestGuest) -> Result<(), anyhow::Error> {
+    while !u.is_empty() {
+    xtask_fuzz::fuzz_eprintln!("fuzz loop");
+    let action = u.arbitrary::<StorvspFuzzAction>()?;
+    match action {
+        StorvspFuzzAction::SendReadWritePacket => {
+            xtask_fuzz::fuzz_eprintln!("StorvspFuzzAction::SendReadWritePacket");
+            send_arbitrary_readwrite_packet(u, guest).await?;
+            //guest.queue.split().0.read().await?;
+        }
+        StorvspFuzzAction::SendRawPacket(packet_type) => {
+            xtask_fuzz::fuzz_eprintln!("StorvspFuzzAction::SendRawPacket{:?}", packet_type);
+            match packet_type {
+                FuzzOutgoingPacketType::AnyOutgoingPacket => {
+                    let packet_types = [
+                        OutgoingPacketType::InBandNoCompletion,
+                        OutgoingPacketType::InBandWithCompletion,
+                        OutgoingPacketType::Completion,
+                    ];
+                    let payload = u.arbitrary::<protocol::Packet>()?;
+                    // TODO: [use-arbitrary-input] (send a byte blob of arbitrary length rather
+                    // than a fixed-size arbitrary packet)
+                    let packet = OutgoingPacket {
+                        transaction_id: u.arbitrary()?,
+                        packet_type: *u.choose(&packet_types)?,
+                        payload: &[payload.as_bytes()], // TODO: [use-arbitrary-input]
+                    };
+
+                    guest.queue.split().1.write(packet).await?;
+                }
+                FuzzOutgoingPacketType::GpaDirectPacket => {
+                    let header = u.arbitrary::<protocol::Packet>()?;
+                    let scsi_req = u.arbitrary::<protocol::ScsiRequest>()?;
+
+                    send_gpa_direct_packet(
+                        guest,
+                        &[header.as_bytes(), scsi_req.as_bytes()],
+                        u.arbitrary()?,
+                        arbitrary_byte_len(u)?,
+                        u.arbitrary()?,
+                    )
+                    .await?
+                }
+            }
+        }
+        StorvspFuzzAction::ReadCompletion => {
+            xtask_fuzz::fuzz_eprintln!("StorvspFuzzAction::ReadCompletion");
+            // Read completion(s) from the storvsp -> guest queue. This shouldn't
+            // evoke any specific storvsp behavior, but is important to eventually
+            // allow forward progress of various code paths.
+            //
+            // Ignore the result, since vmbus returns error if the queue is empty,
+            // but that's fine for the fuzzer ...
+
+            loop {
+                let mut reader = guest.queue.split().0;
+                let res = reader.try_read();
+                match res {
+                    Err(TryReadError::Empty) => {
+                        xtask_fuzz::fuzz_eprintln!("queue empty");
+                        break;
+                    }
+                    _ => {
+                        if res.is_err() {
+                            xtask_fuzz::fuzz_eprintln!("other error")
+                        } else {
+                            xtask_fuzz::fuzz_eprintln!("queue try_read")
+                        }
+                        
+                    }
+                }
+            }
+            
+        }
+    }
+}
+
+Ok(())
+}
+
+
 async fn do_fuzz_work(u: &mut Unstructured<'_>, driver: impl Spawn + Clone) -> Result<(), anyhow::Error> {
     let (host, guest_channel) = connected_async_channels(16 * 1024); // TODO: [use-arbitrary-input]
     let guest_queue = Queue::new(guest_channel).unwrap();
@@ -208,83 +303,20 @@ async fn do_fuzz_work(u: &mut Unstructured<'_>, driver: impl Spawn + Clone) -> R
         guest.perform_protocol_negotiation().await;
     }
 
-    while !u.is_empty() {
-        xtask_fuzz::fuzz_eprintln!("fuzz loop");
-        let action = u.arbitrary::<StorvspFuzzAction>()?;
-        match action {
-            StorvspFuzzAction::SendReadWritePacket => {
-                xtask_fuzz::fuzz_eprintln!("StorvspFuzzAction::SendReadWritePacket");
-                send_arbitrary_readwrite_packet(u, &mut guest).await?;
-                guest.queue.split().0.read().await?;
-            }
-            StorvspFuzzAction::SendRawPacket(packet_type) => {
-                xtask_fuzz::fuzz_eprintln!("StorvspFuzzAction::SendRawPacket{:?}", packet_type);
-                match packet_type {
-                    FuzzOutgoingPacketType::AnyOutgoingPacket => {
-                        let packet_types = [
-                            OutgoingPacketType::InBandNoCompletion,
-                            OutgoingPacketType::InBandWithCompletion,
-                            OutgoingPacketType::Completion,
-                        ];
-                        let payload = u.arbitrary::<protocol::Packet>()?;
-                        // TODO: [use-arbitrary-input] (send a byte blob of arbitrary length rather
-                        // than a fixed-size arbitrary packet)
-                        let packet = OutgoingPacket {
-                            transaction_id: u.arbitrary()?,
-                            packet_type: *u.choose(&packet_types)?,
-                            payload: &[payload.as_bytes()], // TODO: [use-arbitrary-input]
-                        };
 
-                        guest.queue.split().1.write(packet).await?;
-                    }
-                    FuzzOutgoingPacketType::GpaDirectPacket => {
-                        let header = u.arbitrary::<protocol::Packet>()?;
-                        let scsi_req = u.arbitrary::<protocol::ScsiRequest>()?;
+    let teardown = test_worker.teardown().fuse();
+    let run = f(u, &mut guest).fuse();
 
-                        send_gpa_direct_packet(
-                            &mut guest,
-                            &[header.as_bytes(), scsi_req.as_bytes()],
-                            u.arbitrary()?,
-                            arbitrary_byte_len(u)?,
-                            u.arbitrary()?,
-                        )
-                        .await?
-                    }
-                }
-            }
-            StorvspFuzzAction::ReadCompletion => {
-                xtask_fuzz::fuzz_eprintln!("StorvspFuzzAction::ReadCompletion");
-                // Read completion(s) from the storvsp -> guest queue. This shouldn't
-                // evoke any specific storvsp behavior, but is important to eventually
-                // allow forward progress of various code paths.
-                //
-                // Ignore the result, since vmbus returns error if the queue is empty,
-                // but that's fine for the fuzzer ...
+    pin_mut!(teardown, run);
 
-                loop {
-                    let mut reader = guest.queue.split().0;
-                    let res = reader.try_read();
-                    match res {
-                        Err(TryReadError::Empty) => {
-                            xtask_fuzz::fuzz_eprintln!("queue empty");
-                            break;
-                        }
-                        _ => {
-                            if res.is_err() {
-                                xtask_fuzz::fuzz_eprintln!("other error")
-                            } else {
-                                xtask_fuzz::fuzz_eprintln!("queue try_read")
-                            }
-                            
-                        }
-                    }
-                }
-                
-            }
-        }
-    }
+    select! {
+        _r1 = run => xtask_fuzz::fuzz_eprintln!("run completed first"),
+        _r2 = teardown => xtask_fuzz::fuzz_eprintln!("teardown completed first"),
+    };
 
-    test_worker.teardown().await.map_err(|err| anyhow::anyhow!(err))
+    Ok(())
+
+    //select!(test_worker.teardown().await.map_err(|err| anyhow::anyhow!(err))
 }
 
 fn do_fuzz(u: &mut Unstructured<'_>) -> Result<(), anyhow::Error> {

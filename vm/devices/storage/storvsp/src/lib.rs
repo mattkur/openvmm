@@ -839,6 +839,7 @@ impl WorkerInner {
         reader: &'a mut queue::ReadHalf<'a, M>,
     ) -> Result<Packet, WorkerError> {
         let packet = reader.read().await.map_err(WorkerError::Queue)?;
+        tracing::trace!("next_packet");
         let stor_packet =
             parse_packet(&packet, &mut self.full_request_pool).map_err(WorkerError::PacketError)?;
         Ok(stor_packet)
@@ -1294,6 +1295,7 @@ impl WorkerInner {
         writer: &mut queue::WriteHalf<'_, M>,
         packet: &IncomingPacket<'_, M>,
     ) -> Result<bool, WorkerError> {
+        tracing::trace!("handle_packet");
         let packet =
             parse_packet(packet, &mut self.full_request_pool).map_err(WorkerError::PacketError)?;
         let submitted_io = match packet.data {
