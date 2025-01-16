@@ -16,7 +16,7 @@ use parking_lot::RwLock;
 use std::io;
 use std::sync::atomic;
 use thiserror::Error;
-
+use zerocopy::FromZeros;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 

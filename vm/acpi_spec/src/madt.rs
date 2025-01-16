@@ -8,11 +8,11 @@ use open_enum::open_enum;
 use size_of_val;
 use static_assertions::const_assert_eq;
 use thiserror::Error;
+use zerocopy::FromBytes;
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
-use zerocopy::FromBytes;
 
 use zerocopy::Unaligned;
 use zerocopy::LE;
@@ -354,18 +354,21 @@ pub struct MadtIter<'a> {
 
 impl MadtIter<'_> {
     fn parse(&mut self) -> Result<Option<MadtEntry>, ParserError> {
-        while let Some(header) = MadtEntryHeader::read_from_prefix(self.entries) {
+        // todo mattkur preserve errors here
+        while let Ok(header_result) = MadtEntryHeader::read_from_prefix(self.entries) {
+            let header = header_result.0;
             if self.entries.len() < header.length as usize {
                 return Err(ParserError);
             }
             let (buf, rest) = self.entries.split_at(header.length as usize);
             self.entries = rest;
             let entry = match header.typ {
+                // todo mattkur preserve errors here
                 MadtType::APIC => {
-                    MadtEntry::Apic(FromBytes::read_from_prefix(buf).ok_or(ParserError)?)
+                    MadtEntry::Apic(FromBytes::read_from_prefix(buf).map_err(|_| ParserError)?.0)
                 }
                 MadtType::X2APIC => {
-                    MadtEntry::X2Apic(FromBytes::read_from_prefix(buf).ok_or(ParserError)?)
+                    MadtEntry::X2Apic(FromBytes::read_from_prefix(buf).map_err(|_| ParserError)?.0)
                 }
                 _ => continue,
             };

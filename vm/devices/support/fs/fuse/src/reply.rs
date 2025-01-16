@@ -4,7 +4,7 @@
 use super::protocol::*;
 use std::io;
 use std::io::Write;
-
+use zerocopy::FromZeros;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 

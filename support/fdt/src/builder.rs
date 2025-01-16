@@ -7,11 +7,8 @@ use crate::spec;
 use core::marker::PhantomData;
 use core::mem::size_of;
 use thiserror::Error;
+use zerocopy::FromZeros;
 use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
-
 
 /// The FDT builder.
 ///
@@ -190,7 +187,7 @@ where
                     )
                     .ok_or(Error::OutOfSpace)?,
             )
-            .ok_or(Error::OutOfSpace)?;
+            .map_err(|_| Error::OutOfSpace)?; // todo mattkur better mapping
 
         // Write the required empty reservation entry to end the reserve map.
         spec::ReserveEntry {
@@ -206,7 +203,7 @@ where
                 )
                 .ok_or(Error::OutOfSpace)?,
         )
-        .ok_or(Error::OutOfSpace)?;
+        .map_err(|_| Error::OutOfSpace)?; // todo mattkur better mapping
 
         // Determine how many bytes were used. The struct table is the last
         // thing stored in buffer.
@@ -227,7 +224,7 @@ where
         };
         header
             .write_to_prefix(self.inner.buffer)
-            .ok_or(Error::OutOfSpace)?;
+            .map_err(|_| Error::OutOfSpace)?; // todo mattkur better mapping
 
         Ok(total_size)
     }

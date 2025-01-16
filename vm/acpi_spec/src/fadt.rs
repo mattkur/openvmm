@@ -123,7 +123,7 @@ pub const FADT_HW_REDUCED_ACPI: u32 = 1 << 20;
 pub const FADT_LOW_POWER_S0_IDLE_CAPABLE: u32 = 1 << 21;
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, IntoBytes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable)]
 pub enum AddressSpaceId {
     SystemMemory = 0,
     SystemIo = 1,
@@ -141,7 +141,7 @@ impl Default for AddressSpaceId {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, IntoBytes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable)]
 pub enum AddressWidth {
     Undefined = 0,
     Byte = 1,
@@ -157,7 +157,7 @@ impl Default for AddressWidth {
 }
 
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default, IntoBytes)]
+#[derive(Copy, Clone, Debug, Default, IntoBytes, Immutable)]
 pub struct GenericAddress {
     pub addr_space_id: AddressSpaceId,
     pub register_bit_width: u8,

@@ -12,12 +12,12 @@ use futures::AsyncWriteExt;
 use mesh::payload::Protobuf;
 use std::io::ErrorKind;
 use thiserror::Error;
+use zerocopy::FromZeros;
 use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
 
-use zerocopy::Immutable;
 use zerocopy::BigEndian;
 use zerocopy::FromBytes;
+use zerocopy::Immutable;
 
 use zerocopy::U32;
 

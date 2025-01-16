@@ -17,8 +17,9 @@ pub trait FromBytesExt: FromBytes + Immutable {
     where
         Self: Sized,
     {
-        Ref::<_, Unalign<Self>>::new_unaligned_from_prefix(bytes)
-            .map(|(r, s)| (r.read().into_inner(), s))
+        Self::read_from_prefix(bytes).ok() // todo mattkur preserve error
+                                           // Ref::<_, Unalign<Self>>::new_unaligned_from_prefix(bytes)
+                                           //     .map(|(r, s)| (r.read().into_inner(), s))
     }
 
     /// Reads a copy of Self from the suffix of bytes. Returns both the remaining unused bytes and the copy of Self.
@@ -26,9 +27,10 @@ pub trait FromBytesExt: FromBytes + Immutable {
     where
         Self: Sized,
     {
-        Ref::<_, Unalign<Self>>::new_unaligned_from_suffix(bytes)
-            .map(|(s, r)| (s, r.read().into_inner()))
+        Self::read_from_suffix(bytes).ok() // todo mattkur preserve error
+                                           // Ref::<_, Unalign<Self>>::new_unaligned_from_suffix(bytes)
+                                           //     .map(|(s, r)| (s, r.read().into_inner()))
     }
 }
 
-impl<T: FromBytes> FromBytesExt for T {}
+impl<T: FromBytes + Immutable> FromBytesExt for T {}

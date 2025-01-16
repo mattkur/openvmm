@@ -3,11 +3,10 @@
 
 //! Protocol definitions for sending events to remote nodes.
 
-use zerocopy::FromZeros;
-use zerocopy::IntoBytes;
-
 use zerocopy::FromBytes;
+use zerocopy::FromZeros;
 use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 #[repr(C)]
 #[derive(Copy, Clone, IntoBytes, Immutable, FromBytes)]
@@ -34,7 +33,7 @@ impl From<Uuid> for crate::common::Uuid {
 }
 
 #[repr(C)]
-#[derive(IntoBytes, Immutable, FromBytes, FromZeros)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct Event {
     pub port_id: Uuid,
     pub event_type: EventType,

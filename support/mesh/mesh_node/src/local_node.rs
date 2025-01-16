@@ -37,11 +37,11 @@ use std::sync::Arc;
 use std::sync::Weak;
 use std::task::Waker;
 use thiserror::Error;
+use zerocopy::FromBytes;
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
-use zerocopy::FromBytes;
 
 use zerocopy::Ref;
 use zerocopy::Unalign;
@@ -1899,7 +1899,8 @@ impl LocalNode {
     /// Processes a node event.
     pub fn event(&self, remote_node_id: &NodeId, event: &[u8], os_resources: &mut Vec<OsResource>) {
         let parse = || {
-            let header = protocol::Event::read_from_prefix(event)?;
+            // todo mattkur: retain error?
+            let header = protocol::Event::read_from_prefix(event).ok()?.0;
             let (resources, message) = Ref::new_slice_from_prefix(
                 &event[size_of_val(&header)..],
                 header.resource_count as usize,
@@ -1972,8 +1973,10 @@ impl LocalNode {
             }
             protocol::EventType::CLOSE_PORT => NonMessageEvent::ClosePort.into(),
             protocol::EventType::CHANGE_PEER => {
+                // mattkur todo better map error
                 let data = protocol::ChangePeerData::read_from_prefix(message)
-                    .ok_or(EventError::Truncated)?;
+                    .map_err(|_| EventError::Truncated)?
+                    .0;
                 let port = self
                     .get_port(Address {
                         node: NodeId(data.node.into()),
@@ -1992,8 +1995,10 @@ impl LocalNode {
                 return Ok(());
             }
             protocol::EventType::FAIL_PORT => {
+                // todo mattkur better map error
                 let data = protocol::FailPortData::read_from_prefix(message)
-                    .ok_or(EventError::Truncated)?;
+                    .map_err(|_| EventError::Truncated)?
+                    .0;
                 NonMessageEvent::FailPort(NodeError::new(
                     remote_node_id,
                     RemotePortError(NodeId(data.node.into())),

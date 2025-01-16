@@ -6,11 +6,10 @@ use crate::packed_nums::u32_ne;
 use crate::Table;
 use bitfield_struct::bitfield;
 use open_enum::open_enum;
-use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 use zerocopy::Unaligned;
 

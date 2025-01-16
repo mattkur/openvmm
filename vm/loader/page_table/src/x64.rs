@@ -196,7 +196,7 @@ impl PageTableEntry {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Eq, IntoBytes, Immutable, FromBytes, FromZeros)]
+#[derive(Debug, Clone, PartialEq, Eq, IntoBytes, Immutable, FromBytes)]
 pub struct PageTable {
     entries: [PageTableEntry; PAGE_TABLE_ENTRY_COUNT],
 }

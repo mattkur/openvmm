@@ -30,12 +30,9 @@ use vmgs_format::VMGS_FILE_TABLE_BLOCK_SIZE;
 use vmgs_format::VMGS_MIN_FILE_BLOCK_OFFSET;
 use vmgs_format::VMGS_SIGNATURE;
 use vmgs_format::VMGS_VERSION_3_0;
-use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
-
+use zerocopy::FromZeros;
+use zerocopy::IntoBytes;
 
 /// Info about a specific VMGS file.
 #[derive(Debug)]
@@ -232,7 +229,9 @@ impl Vmgs {
             )));
         }
 
-        let file_table = VmgsFileTable::ref_from_prefix(&file_table_buffer).unwrap();
+        let file_table = VmgsFileTable::ref_from_prefix(&file_table_buffer)
+            .unwrap()
+            .0;
 
         let file_control_blocks =
             initialize_file_metadata(file_table, version, storage.block_capacity())?;
@@ -1068,7 +1067,8 @@ impl Vmgs {
         // Update the cached extended file table
         let extended_file_table =
             VmgsExtendedFileTable::read_from_prefix(&extended_file_table_buffer[..])
-                .context("Invalid decrypted extended file table")?;
+                .context("Invalid decrypted extended file table")?
+                .0;
         for (file_id, fcb) in self.fcbs.iter_mut() {
             fcb.attributes = extended_file_table.entries[*file_id].attributes;
             fcb.encryption_key = extended_file_table.entries[*file_id].encryption_key;
@@ -1385,10 +1385,11 @@ async fn read_headers_inner(storage: &mut VmgsStorage) -> Result<(VmgsHeader, Vm
         .map_err(Error::ReadDisk)?;
 
     // first_two_blocks will contain enough bytes to read the first two headers
-    let header_1 = VmgsHeader::read_from_prefix(&first_two_blocks).unwrap();
+    let header_1 = VmgsHeader::read_from_prefix(&first_two_blocks).unwrap().0;
     let header_2 =
         VmgsHeader::read_from_prefix(&first_two_blocks[storage.aligned_header_size() as usize..])
-            .unwrap();
+            .unwrap()
+            .0;
 
     Ok((header_1, header_2))
 }

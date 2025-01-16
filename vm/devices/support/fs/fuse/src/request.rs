@@ -7,7 +7,7 @@ mod macros;
 use crate::protocol::*;
 use std::io;
 use zerocopy::FromBytes;
-
+use zerocopy::FromZeros;
 use zerocopy::IntoBytes;
 
 // Define an enum for all operations and their arguments.

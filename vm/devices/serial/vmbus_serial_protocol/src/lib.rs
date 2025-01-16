@@ -9,12 +9,10 @@ use core::fmt::Debug;
 use guid::Guid;
 use open_enum::open_enum;
 use static_assertions::const_assert_eq;
-use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
-
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 /// Maximum message size for all messages.
 pub const MAX_MESSAGE_SIZE: usize = 512;

@@ -6,12 +6,10 @@
 use bitfield_struct::bitfield;
 use core::fmt::Display;
 use static_assertions::const_assert_eq;
-use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
-
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 /// UEFI Time Structure
 ///

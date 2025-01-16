@@ -116,7 +116,7 @@ pub struct VBS_VM_GPA_PAGE_BOOT_METADATA {
 
 /// Flags defining the security policy for the guest
 #[bitfield(u32)]
-#[derive(IntoBytes)]
+#[derive(IntoBytes, Immutable)]
 pub struct VBS_POLICY_FLAGS {
     /// Guest supports debugging
     #[bits(1)]

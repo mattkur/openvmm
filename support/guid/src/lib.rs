@@ -8,12 +8,10 @@
 
 use std::str::FromStr;
 use thiserror::Error;
-use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
-
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 /// Windows format GUID.
 #[repr(C)]

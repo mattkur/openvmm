@@ -35,19 +35,13 @@ use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use thiserror::Error;
+use zerocopy::FromZeros;
 use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
-
 
 mod pipe_protocol {
-    use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
     use zerocopy::FromBytes;
-    
+    use zerocopy::Immutable;
+    use zerocopy::IntoBytes;
 
     /// Pipe channel packets are prefixed with this header to allow for
     /// non-8-multiple lengths.
@@ -82,11 +76,10 @@ mod protocol {
     use std::sync::atomic::AtomicU32;
     use std::sync::atomic::Ordering;
     use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
+    use zerocopy::KnownLayout;
 
-use zerocopy::Immutable;
     use zerocopy::FromBytes;
-    
+    use zerocopy::Immutable;
 
     /// VmBus ring buffers are sized in multiples 4KB pages, with a 4KB control page.
     pub const PAGE_SIZE: usize = 4096;

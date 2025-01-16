@@ -14,9 +14,8 @@ use std::fmt::Debug;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
-
+use zerocopy::Immutable;
 
 pub const VENDOR_ID: u16 = 0x1414;
 pub const DEVICE_ID: u16 = 0x00BA;
@@ -135,10 +134,11 @@ impl Wqe {
     }
 
     pub fn sgl(&self) -> &[Sge] {
-        Sge::slice_from_prefix(
+        Sge::ref_from_prefix_with_elems(
             &self.data[self.header.sgl_offset()..],
             self.header.params.num_sgl_entries() as usize,
         )
+        .ok() // todo mattkur better error handling
         .unwrap()
         .0
     }

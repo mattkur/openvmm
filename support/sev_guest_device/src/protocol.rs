@@ -4,12 +4,11 @@
 //! The module includes the definitions of data structures according to SEV-SNP specification.
 
 use bitfield_struct::bitfield;
+use zerocopy::FromZeros;
 use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
 
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
-
+use zerocopy::Immutable;
 
 /// Ioctl type defined by Linux.
 pub const SNP_GUEST_REQ_IOC_TYPE: u8 = b'S';
@@ -33,7 +32,7 @@ pub struct SnpGuestRequestIoctl {
 
 /// VMM error code.
 #[repr(C)]
-#[derive(FromZeros)]
+#[derive(FromBytes)]
 pub struct VmmErrorCode {
     /// Firmware error
     pub fw_error: u32,

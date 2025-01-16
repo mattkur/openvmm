@@ -66,12 +66,10 @@ use std::sync::Arc;
 use thiserror::Error;
 use tracing::instrument;
 use unicycle::FuturesUnordered;
-use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
-
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 /// If true, use a SOCK_SEQPACKET socket. Otherwise, use a SOCK_STREAM socket.
 ///

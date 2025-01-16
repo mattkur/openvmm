@@ -12,8 +12,8 @@ use core::sync::atomic::AtomicU8;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
+use zerocopy::Immutable;
 
 /// A helper trait for types that can be safely transmuted to and from byte
 /// slices.
@@ -103,7 +103,7 @@ pub trait AtomicSliceOps {
     /// Writes an object to the slice.
     ///
     /// Panics if the slice is not the same size as `T`.
-    fn atomic_write_obj<T: IntoBytes>(&self, obj: &T) {
+    fn atomic_write_obj<T: IntoBytes + Immutable>(&self, obj: &T) {
         self.atomic_write(obj.as_bytes());
     }
 

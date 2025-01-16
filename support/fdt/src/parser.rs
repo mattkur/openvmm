@@ -172,7 +172,9 @@ impl<'a> Parser<'a> {
     /// Read just the `totalsize` field of a FDT header. This is useful when
     /// attempting to determine the overall size of a device tree.
     pub fn read_total_size(buf: &[u8]) -> Result<usize, Error<'a>> {
-        let header = spec::Header::read_from_prefix(buf).ok_or(Error(ErrorKind::NoHeader))?;
+        let header = spec::Header::read_from_prefix(buf)
+            .map_err(|_| Error(ErrorKind::NoHeader))?
+            .0; // todo mattkur better mapping
 
         if u32::from(header.magic) != spec::MAGIC {
             Err(Error(ErrorKind::HeaderMagic))
@@ -187,7 +189,9 @@ impl<'a> Parser<'a> {
             return Err(Error(ErrorKind::BufferAlignment));
         }
 
-        let header = spec::Header::read_from_prefix(buf).ok_or(Error(ErrorKind::NoHeader))?;
+        let header = spec::Header::read_from_prefix(buf)
+            .map_err(|_| Error(ErrorKind::NoHeader))?
+            .0; // todo mattkur better mapping
 
         if u32::from(header.magic) != spec::MAGIC {
             return Err(Error(ErrorKind::HeaderMagic));

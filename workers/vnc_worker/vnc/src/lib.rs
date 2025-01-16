@@ -13,11 +13,10 @@ use futures::FutureExt;
 use futures::StreamExt;
 use pal_async::socket::PolledSocket;
 use thiserror::Error;
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
-
 
 #[derive(Debug, Error)]
 pub enum Error {

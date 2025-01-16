@@ -31,12 +31,10 @@ use std::io;
 use std::pin::pin;
 use thiserror::Error;
 use tracing::Instrument;
-use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
-
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 /// A mesh that consists of exactly two nodes, communicating over an arbitrary
 /// bidirectional byte stream.

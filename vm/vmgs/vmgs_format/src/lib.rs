@@ -15,9 +15,8 @@ use static_assertions::const_assert;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
-
+use zerocopy::Immutable;
 
 /// The suggested default capacity of a VMGS disk in bytes, 4MB.
 ///
@@ -167,7 +166,7 @@ pub struct VmgsHeader {
 const_assert!(size_of::<VmgsHeader>() == 168);
 
 #[repr(C)]
-#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes, Debug)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes, Debug, KnownLayout)]
 pub struct VmgsFileTable {
     pub entries: [VmgsFileEntry; VMGS_FILE_COUNT],
 }

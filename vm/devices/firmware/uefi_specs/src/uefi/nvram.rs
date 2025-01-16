@@ -10,9 +10,8 @@ use guid::Guid;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use zerocopy::Immutable;
 use zerocopy::FromBytes;
-
+use zerocopy::Immutable;
 
 /// UEFI spec 8.2 - Variable Services
 #[bitfield(u32)]
@@ -101,14 +100,11 @@ impl EFI_VARIABLE_AUTHENTICATION_2 {
 /// UEFI spec 32.4.1
 pub mod signature_list {
     use guid::Guid;
-    use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
-
-use zerocopy::Immutable;
     use zerocopy::FromBytes;
-    
+    use zerocopy::Immutable;
+    use zerocopy::IntoBytes;
 
-    #[derive(Debug, PartialEq, Eq, FromBytes, IntoBytes)]
+    #[derive(Debug, PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
     #[repr(C)]
     pub struct EFI_SIGNATURE_LIST {
         /// Type of the signature. GUID signature types are defined in "Related

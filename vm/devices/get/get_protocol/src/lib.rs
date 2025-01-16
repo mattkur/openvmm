@@ -11,8 +11,6 @@ use static_assertions::const_assert;
 use static_assertions::const_assert_eq;
 use std::fmt::Debug;
 use zerocopy::FromBytes;
-
-
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
@@ -82,7 +80,7 @@ open_enum! {
     ///
     /// These are intended to be "fire-and-forget" messages sent from the Host
     /// to the Guest, without requiring a response.
-    #[derive(IntoBytes, Immutable, FromBytes)]
+    #[derive(IntoBytes, Immutable, FromBytes, KnownLayout)]
     pub enum GuestNotifications: u16 {
         INVALID              = 0,
         UPDATE_GENERATION_ID = 1,
@@ -102,7 +100,7 @@ open_enum! {
     ///
     /// These are intended to be "fire-and-forget" messages sent from the Guest
     /// to the Host, without requiring a response.
-    #[derive(IntoBytes, Immutable, FromBytes)]
+    #[derive(IntoBytes, Immutable, FromBytes, KnownLayout)]
     pub enum HostNotifications: u16 {
         INVALID   = 0,
         POWER_OFF = 1,
@@ -120,7 +118,7 @@ open_enum! {
 
 open_enum! {
     /// Header ids (Each request has a response of the same ID).
-    #[derive(IntoBytes, Immutable, FromBytes)]
+    #[derive(IntoBytes, Immutable, FromBytes, KnownLayout)]
     pub enum HostRequests: u16 {
         INVALID                      = 0,
         VERSION                      = 1,
@@ -171,8 +169,7 @@ pub mod header {
     use super::MessageVersions;
     use static_assertions::const_assert_eq;
     use zerocopy::FromBytes;
-    
-    
+
     use zerocopy::Immutable;
     use zerocopy::IntoBytes;
     use zerocopy::KnownLayout;
@@ -195,7 +192,7 @@ pub mod header {
     // the `MessageId` associated type.
     pub trait HeaderMeta: private::Sealed {
         const MESSAGE_TYPE: MessageTypes;
-        type MessageId: Copy + zerocopy::KnownLayout + zerocopy::IntoBytes + Sized;
+        type MessageId: Copy + KnownLayout + IntoBytes + Sized;
     }
 
     macro_rules! defn_header_meta {
@@ -210,7 +207,7 @@ pub mod header {
             }
 
             $(
-                #[derive(Copy, Clone, Debug)]
+                #[derive(Copy, Clone, Debug, Immutable, KnownLayout)]
                 pub enum $name {}
 
                 impl HeaderMeta for $name {
@@ -253,7 +250,7 @@ pub mod header {
     }
 
     #[repr(C)]
-    #[derive(Copy, Clone, Debug, FromBytes, PartialEq)]
+    #[derive(Copy, Clone, Debug, FromBytes, PartialEq, Immutable)]
     pub struct HeaderGeneric<Meta: HeaderMeta> {
         pub message_version: MessageVersions,
         pub message_type: MessageTypes,
