@@ -44,9 +44,12 @@ use x86defs::X64_CR0_ET;
 use x86defs::X64_CR0_NW;
 use x86defs::X64_EFER_NXE;
 use x86defs::X86X_MSR_DEFAULT_PAT;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+
 use zerocopy::Ref;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Protobuf, Inspect)]
@@ -707,8 +710,7 @@ pub struct Xsave {
 
 impl Xsave {
     fn normalize(&mut self) {
-        let (mut fxsave, data) =
-            Ref::<_, Fxsave>::new_from_prefix(self.data.as_bytes_mut()).unwrap();
+        let (mut fxsave, data) = Ref::<_, Fxsave>::from_prefix(self.data.as_bytes_mut()).unwrap();
         let header = XsaveHeader::mut_from_prefix(data).unwrap();
 
         // Clear the mxcsr mask since it's ignored in the restore process and
@@ -796,10 +798,9 @@ impl Xsave {
         this.data.as_bytes_mut()[..XSAVE_VARIABLE_OFFSET]
             .copy_from_slice(&src[..XSAVE_VARIABLE_OFFSET]);
 
-        let (mut header, data) = Ref::<_, XsaveHeader>::new_from_prefix(
-            &mut this.data.as_bytes_mut()[XSAVE_LEGACY_LEN..],
-        )
-        .unwrap();
+        let (mut header, data) =
+            Ref::<_, XsaveHeader>::from_prefix(&mut this.data.as_bytes_mut()[XSAVE_LEGACY_LEN..])
+                .unwrap();
 
         header.xcomp_bv = caps.xsave.features | caps.xsave.supervisor_features | XCOMP_COMPRESSED;
         let mut cur = 0;
@@ -989,7 +990,7 @@ impl Debug for Apic {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes, Inspect)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes, Inspect)]
 pub struct ApicRegisters {
     #[inspect(skip)]
     pub reserved_0: [u32; 2],
@@ -1068,7 +1069,7 @@ impl From<ApicRegisters> for [u32; 64] {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct ApicRegister {
     value: u32,
     zero: [u32; 3],

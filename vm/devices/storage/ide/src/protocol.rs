@@ -4,9 +4,11 @@
 use bitfield_struct::bitfield;
 use inspect::Inspect;
 use open_enum::open_enum;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
 
 #[allow(non_camel_case_types)]
 mod packed_nums {
@@ -38,7 +40,7 @@ pub struct Status {
 
 // ide commands
 open_enum! {
-    #[derive(AsBytes, FromBytes, FromZeroes, Inspect)]
+    #[derive(IntoBytes, Immutable, FromBytes, Inspect)]
     #[inspect(debug)]
     pub enum IdeCommand: u8 {
         DEVICE_RESET = 0x08,
@@ -92,7 +94,7 @@ open_enum! {
 // errors
 #[derive(Inspect)]
 #[bitfield(u8)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct ErrorReg {
     /// no address mark or illegal length indication, register default values
     pub amnf_ili_default: bool,
@@ -121,7 +123,7 @@ pub const DEVICE_ACTIVE_OR_IDLE: u8 = 0xFF;
 
 #[derive(Inspect)]
 #[bitfield(u8)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct DeviceHeadReg {
     #[bits(4)]
     pub head: u8,
@@ -146,7 +148,7 @@ pub const ATAPI_DATA_FOR_HOST: u8 = 0x02;
 pub const ATAPI_COMMAND_COMPLETE: u8 = 0x03;
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct IdeFeatures {
     pub config_bits: u16,                              // word 0
     pub cylinders: u16,                                // word 1
@@ -290,7 +292,7 @@ impl DeviceControlReg {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct BusMasterDmaDesc {
     pub mem_physical_base: u32,
     pub byte_count: u16,
@@ -299,7 +301,7 @@ pub struct BusMasterDmaDesc {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct EnlightenedInt13Command {
     pub command: IdeCommand,
     pub device_head: DeviceHeadReg,

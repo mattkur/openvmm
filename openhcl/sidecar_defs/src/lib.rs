@@ -13,13 +13,16 @@ use hvdef::hypercall::HvInputVtl;
 use hvdef::HvError;
 use hvdef::HvMessage;
 use open_enum::open_enum;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// Sidecar start input parameters.
 #[repr(C, align(4096))]
-#[derive(FromZeroes)]
+#[derive(FromZeros)]
 pub struct SidecarParams {
     /// The physical address of the x86-64 hypercall page.
     pub hypercall_page: u64,
@@ -33,7 +36,7 @@ pub struct SidecarParams {
 
 /// Node-specific input parameters.
 #[repr(C)]
-#[derive(FromZeroes)]
+#[derive(FromZeros)]
 pub struct SidecarNodeParams {
     /// The physical address of the beginning of the reserved memory for this
     /// node. Must be page aligned.
@@ -53,7 +56,7 @@ const _: () = assert!(size_of::<SidecarParams>() <= PAGE_SIZE);
 
 /// The output of the sidecar kernel boot process.
 #[repr(C)]
-#[derive(FromZeroes)]
+#[derive(FromZeros)]
 pub struct SidecarOutput {
     /// The boot error. This is only set if the entry point returns false.
     pub error: CommandError,
@@ -63,7 +66,7 @@ pub struct SidecarOutput {
 
 /// The per-node output of the sidecar kernel boot process.
 #[repr(C)]
-#[derive(FromZeroes)]
+#[derive(FromZeros)]
 pub struct SidecarNodeOutput {
     /// The physical address of the control page for the node.
     pub control_page: u64,
@@ -148,7 +151,7 @@ pub const fn required_memory(vp_count: u32) -> usize {
 
 /// The sidecar command page, containing command requests and responses.
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct CommandPage {
     /// The command to run.
     pub command: SidecarCommand,
@@ -172,7 +175,7 @@ const REQUEST_DATA_SIZE: usize = 64 * size_of::<u128>();
 
 /// A string error.
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct CommandError {
     /// The length of the error string, in bytes.
     pub len: u8,
@@ -184,7 +187,7 @@ const _: () = assert!(size_of::<CommandPage>() == PAGE_SIZE);
 
 open_enum! {
     /// The sidecar command.
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum SidecarCommand: u32 {
         /// No command.
         NONE = 0,
@@ -205,7 +208,7 @@ open_enum! {
 /// Followed by an array of [`hvdef::hypercall::HvRegisterAssoc`], which are
 /// updated in place for the get request.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct GetSetVpRegisterRequest {
     /// The number of registers to get.
     pub count: u16,
@@ -230,7 +233,7 @@ pub const MAX_GET_SET_VP_REGISTERS: usize = (REQUEST_DATA_SIZE
 
 /// A request for [`SidecarCommand::TRANSLATE_GVA`].
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct TranslateGvaRequest {
     /// The guest virtual address page number.
     pub gvn: u64,
@@ -240,7 +243,7 @@ pub struct TranslateGvaRequest {
 
 /// A response for [`SidecarCommand::TRANSLATE_GVA`].
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct TranslateGvaResponse {
     /// The hypervisor result.
     pub result: HvError,
@@ -252,7 +255,7 @@ pub struct TranslateGvaResponse {
 
 /// A response for [`SidecarCommand::RUN_VP`].
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct RunVpResponse {
     /// If true, the VP was stopped due to an intercept.
     pub intercept: u8,
@@ -260,7 +263,7 @@ pub struct RunVpResponse {
 
 /// The CPU context for x86-64.
 #[repr(C, align(16))]
-#[derive(Debug, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct CpuContextX64 {
     /// The general purpose registers, in the usual order, except CR2 is in
     /// RSP's position.

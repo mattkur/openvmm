@@ -43,8 +43,11 @@ use vmbus_core::OutgoingMessage;
 use vmbus_core::VersionInfo;
 use vmbus_ring::gparange;
 use vmcore::monitor::MonitorId;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 /// An error caused by a channel operation.
 #[derive(Debug, Error)]
@@ -3353,7 +3356,7 @@ fn revoke<N: Notifier>(
 }
 
 /// Sends a VMBus channel message to the guest.
-fn send_message<N: Notifier, T: AsBytes + protocol::VmbusMessage + std::fmt::Debug>(
+fn send_message<N: Notifier, T: IntoBytes + protocol::VmbusMessage + std::fmt::Debug>(
     notifier: &mut N,
     msg: &T,
 ) {
@@ -3361,7 +3364,7 @@ fn send_message<N: Notifier, T: AsBytes + protocol::VmbusMessage + std::fmt::Deb
 }
 
 /// Sends a VMBus channel message to the guest via an alternate port.
-fn send_message_with_target<N: Notifier, T: AsBytes + protocol::VmbusMessage + std::fmt::Debug>(
+fn send_message_with_target<N: Notifier, T: IntoBytes + protocol::VmbusMessage + std::fmt::Debug>(
     notifier: &mut N,
     msg: &T,
     target: Option<ConnectionTarget>,
@@ -3470,11 +3473,11 @@ mod tests {
     use test_with_tracing::test;
     use vmbus_core::protocol::TargetInfo;
 
-    fn in_msg<T: AsBytes>(message_type: protocol::MessageType, t: T) -> SynicMessage {
+    fn in_msg<T: IntoBytes>(message_type: protocol::MessageType, t: T) -> SynicMessage {
         in_msg_ex(message_type, t, false, false)
     }
 
-    fn in_msg_ex<T: AsBytes>(
+    fn in_msg_ex<T: IntoBytes>(
         message_type: protocol::MessageType,
         t: T,
         multiclient: bool,
@@ -4014,7 +4017,7 @@ mod tests {
         let version_response = protocol::VersionResponse {
             version_supported: 1,
             selected_version_or_connection_id: 1,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
 
         if version >= Version::Copper {
@@ -4360,9 +4363,9 @@ mod tests {
                 .handle_open_channel(&protocol::OpenChannel2 {
                     open_channel: protocol::OpenChannel {
                         channel_id: ChannelId(id),
-                        ..FromZeroes::new_zeroed()
+                        ..FromZeros::new_zeroed()
                     },
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 })
                 .unwrap()
         }
@@ -4383,7 +4386,7 @@ mod tests {
                         target_vp,
                         target_sint,
                         ring_buffer_gpadl: GpadlId(id),
-                        ..FromZeroes::new_zeroed()
+                        ..FromZeros::new_zeroed()
                     },
                     version,
                 )
@@ -4456,7 +4459,7 @@ mod tests {
                             .as_u64(),
                         child_to_parent_monitor_page_gpa: 0x123f000,
                         parent_to_child_monitor_page_gpa: 0x321f000,
-                        ..FromZeroes::new_zeroed()
+                        ..FromZeros::new_zeroed()
                     },
                     client_id: Guid::ZERO,
                 },
@@ -4524,9 +4527,9 @@ mod tests {
             &protocol::InitiateContact2 {
                 initiate_contact: protocol::InitiateContact {
                     version_requested: Version::Win10 as u32,
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 },
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             },
             &SynicMessage::default(),
             true,
@@ -4920,7 +4923,7 @@ mod tests {
         env.notifier.check_message_with_target(
             OutgoingMessage::new(&protocol::OpenResult {
                 channel_id: ChannelId(1),
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             }),
             Some(ConnectionTarget { vp: 1, sint: SINT }),
         );

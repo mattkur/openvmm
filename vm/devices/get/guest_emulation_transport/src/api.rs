@@ -174,8 +174,6 @@ pub struct GuestStateProtectionById {
 impl GuestStateProtectionById {
     /// Construct a blank instance of `GuestStateProtectionById`
     pub fn new_zeroed() -> GuestStateProtectionById {
-        use zerocopy::FromZeroes;
-
         GuestStateProtectionById {
             seed: GspCleartextContent::new_zeroed(),
             extended_status_flags: GspExtendedStatusFlags::new_zeroed(),

@@ -43,9 +43,12 @@ use sidecar_defs::SidecarCommand;
 use sidecar_defs::TranslateGvaRequest;
 use sidecar_defs::TranslateGvaResponse;
 use x86defs::apic::ApicBase;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// Entry point for an AP. Called with per-VP state (page tables, stack,
 /// globals) already initialized, and IDT and GDT set appropriately.
@@ -515,7 +518,7 @@ fn translate_gva(command_page: &mut CommandPage) {
             let output = unsafe { &*addr_space::hypercall_output() };
             (HvError(0), FromBytes::read_from_prefix(output).unwrap())
         }
-        Err(err) => (err, FromZeroes::new_zeroed()),
+        Err(err) => (err, FromZeros::new_zeroed()),
     };
 
     TranslateGvaResponse {

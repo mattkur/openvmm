@@ -33,7 +33,10 @@ use vmbus_channel::bus::OfferParams;
 use vmbus_channel::gpadl_ring::GpadlRingMem;
 use vmbus_channel::simple::SimpleVmbusDevice;
 use vmcore::save_restore::SavedStateNotSupported;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 use zerocopy_helpers::FromBytesExt;
 

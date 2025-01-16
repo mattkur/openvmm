@@ -11,8 +11,11 @@ use net_backend::RxMetadata;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use virtio::VirtioQueueCallbackWork;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 #[derive(Default)]
 struct RxPacket {
@@ -121,7 +124,7 @@ impl BufferAccess for VirtioWorkPool {
 
         let virtio_net_header = VirtioNetHeader {
             num_buffers: 1,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         let locked_packet = self.rx_packets[id.0 as usize].lock();
         let work = locked_packet.work.as_ref().expect("invalid buffer index");

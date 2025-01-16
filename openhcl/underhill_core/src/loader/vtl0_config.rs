@@ -19,8 +19,11 @@ use std::ffi::CString;
 use std::io::Read;
 use thiserror::Error;
 use tracing::instrument;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 /// Errors returned when reading measured config.
 #[derive(Debug, Error)]

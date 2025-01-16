@@ -20,8 +20,10 @@ use scsi_buffers::RequestBuffers;
 use std::sync::Arc;
 use thiserror::Error;
 use vhd1_defs::VhdFooter;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 const DEFAULT_SECTOR_SIZE: u32 = 512;
 

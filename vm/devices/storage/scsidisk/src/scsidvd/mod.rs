@@ -33,9 +33,12 @@ use thiserror::Error;
 use tracing::Instrument;
 use vmcore::save_restore::RestoreError;
 use vmcore::save_restore::SaveError;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 enum Media {
     Unloaded,
@@ -292,7 +295,7 @@ impl ScsiSaveRestore for SimpleScsiDvd {
 ///
 /// Assumes that allocation_length is already validated to be at least
 /// `size_of::<scsi::VpdPageHeader>()`.
-fn write_vpd_page<T: ?Sized + AsBytes>(
+fn write_vpd_page<T: ?Sized + IntoBytes>(
     external_data: &RequestBuffers<'_>,
     allocation_length: usize,
     page_code: u8,
@@ -1239,7 +1242,7 @@ impl SimpleScsiDvd {
             */
             data_mode: 0b00100001,
             track_size: last_lba.into(),
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         let tx = std::cmp::min(allocation_length, size_of::<scsi::TrackInformation3>());
         external_data
@@ -1465,7 +1468,7 @@ impl SimpleScsiDvd {
         let mechanism_status_header: scsi::MechanismStatusHeader = scsi::MechanismStatusHeader {
             flags: scsi::MechanismStatusHeaderFlags::new()
                 .with_door_open(self.media_state.lock().drive_state.tray_open()),
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         let tx = std::cmp::min(allocation_length, size_of::<scsi::MechanismStatusHeader>());
         external_data
@@ -1494,7 +1497,7 @@ impl SimpleScsiDvd {
         let data = scsi::ReadBufferCapacityData {
             data_length: (size_of::<scsi::ReadBufferCapacityData>() as u16 - 2).into(),
             block_data_returned: block_info as u8,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
 
         external_data
@@ -1546,7 +1549,7 @@ impl SimpleScsiDvd {
                 .with_uru(true)
                 .with_dbc_v(false)
                 .with_did_v(false),
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         external_data
             .writer()
@@ -1753,7 +1756,7 @@ impl SimpleScsiDvd {
                             .with_reserved(0),
                         additional_length: 0x08,
                     },
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 };
                 if bytes_used > 0 {
                     external_data
@@ -1954,7 +1957,7 @@ impl SimpleScsiDvd {
         let header = scsi::GetConfigurationHeader {
             data_length: (data_length as u32).into(),
             current_profile: current_profile.into(),
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
 
         let tx = external_data.len();
@@ -1986,7 +1989,7 @@ impl SimpleScsiDvd {
             vendor_id: *b"Msft    ",
             product_id: *b"Virtual DVD-ROM ",
             product_revision_level: *b"1.0 ",
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
 
         let tx = std::cmp::min(allocation_length, size_of::<scsi::InquiryData>());
@@ -2141,7 +2144,7 @@ impl SimpleScsiDvd {
                 let data = scsi::PowerConditionPage {
                     page_code: 0x1a,
                     page_length: 0x0a,
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 };
                 external_data
                     .writer()
@@ -2185,7 +2188,7 @@ impl SimpleScsiDvd {
         let data = scsi::ModeParameterHeader10 {
             mode_data_length: (data_length - (size_of::<u16>() as u16)).into(),
             block_descriptor_length: 0.into(),
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         let tx = std::cmp::min(super::MODE_PARAMETER_HEADER10_SIZE, buffer_size);
         external_data
@@ -2222,7 +2225,7 @@ impl SimpleScsiDvd {
         let header = scsi::GetPerformanceHeader {
             total_data_length: (data_length as u32).into(),
             except: except & 0x01,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
 
         let tx =
@@ -2358,7 +2361,10 @@ mod tests {
     use scsi_core::save_restore::ScsiDvdSavedState;
     use scsi_core::AsyncScsiDisk;
     use scsi_core::Request;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+    use zerocopy::KnownLayout;
+
+    use zerocopy::Immutable;
 
     #[derive(Debug)]
     struct TestDisk {

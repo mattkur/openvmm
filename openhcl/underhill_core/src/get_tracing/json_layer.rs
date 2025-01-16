@@ -25,8 +25,11 @@ use tracing::Id;
 use tracing::Subscriber;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 /// A JSON layer wrapping a [`TraceWriter`].
 pub struct JsonMeshLayer {

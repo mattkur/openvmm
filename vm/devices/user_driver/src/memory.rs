@@ -6,7 +6,10 @@
 use safeatomic::AtomicSliceOps;
 use std::sync::atomic::AtomicU8;
 use std::sync::Arc;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 /// The 4KB page size used by user-mode devices.
@@ -165,7 +168,7 @@ impl MemoryBlock {
     }
 
     /// Writes an object into the buffer at `offset`.
-    pub fn write_obj<T: AsBytes>(&self, offset: usize, data: &T) {
+    pub fn write_obj<T: IntoBytes>(&self, offset: usize, data: &T) {
         self.as_slice()[offset..][..size_of::<T>()].atomic_write_obj(data);
     }
 

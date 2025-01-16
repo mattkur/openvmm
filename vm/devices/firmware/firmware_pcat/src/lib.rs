@@ -46,7 +46,10 @@ use vm_topology::processor::VpIndex;
 use vmcore::device_state::ChangeDeviceState;
 use vmcore::vmtime::VmTimeAccess;
 use vmcore::vmtime::VmTimeSource;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 /// Static config info which gets queried by the PCAT BIOS.
 pub mod config {

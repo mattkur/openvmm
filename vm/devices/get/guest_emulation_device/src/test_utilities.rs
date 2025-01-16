@@ -28,9 +28,12 @@ use vmbus_async::pipe::MessagePipe;
 use vmbus_channel::gpadl_ring::GpadlRingMem;
 use vmbus_ring::FlatRingMem;
 use vmbus_ring::RingMem;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 #[derive(Debug, Clone)]
 pub enum Event {

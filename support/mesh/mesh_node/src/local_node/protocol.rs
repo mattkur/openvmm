@@ -3,12 +3,14 @@
 
 //! Protocol definitions for sending events to remote nodes.
 
-use zerocopy::AsBytes;
+use zerocopy::FromZeros;
+use zerocopy::IntoBytes;
+
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
 
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct Uuid([u8; 16]);
 
 impl Uuid {
@@ -32,7 +34,7 @@ impl From<Uuid> for crate::common::Uuid {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes, FromZeros)]
 pub struct Event {
     pub port_id: Uuid,
     pub event_type: EventType,
@@ -43,7 +45,7 @@ pub struct Event {
 }
 
 open_enum::open_enum! {
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum EventType: u8 {
         MESSAGE = 1,
         CLOSE_PORT = 2,
@@ -55,7 +57,7 @@ open_enum::open_enum! {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct ChangePeerData {
     pub node: Uuid,
     pub port: Uuid,
@@ -64,13 +66,13 @@ pub struct ChangePeerData {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct FailPortData {
     pub node: Uuid,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct ResourceData {
     /// if zero, this is a file descriptor/handle
     pub id: Uuid,

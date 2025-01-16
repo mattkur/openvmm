@@ -54,9 +54,12 @@ use std::task::Context;
 use std::task::Poll;
 use tracing_helpers::ErrorValueExt;
 use unicycle::FuturesUnordered;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 type InvitationMap =
     Arc<Mutex<HashMap<NodeId, (RemoteNodeHandle, mesh_channel::OneshotSender<()>)>>>;
@@ -700,7 +703,7 @@ impl Connection {
             message = SendMessage::from(
                 protocol::PacketHeader {
                     packet_type: protocol::PacketType::LARGE_EVENT,
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 }
                 .as_bytes(),
             );
@@ -715,7 +718,7 @@ impl Connection {
             message.extend(
                 protocol::PacketHeader {
                     packet_type: protocol::PacketType::EVENT,
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 }
                 .as_bytes(),
             );

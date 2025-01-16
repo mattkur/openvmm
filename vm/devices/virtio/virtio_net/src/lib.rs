@@ -42,13 +42,16 @@ use virtio::VirtioQueue;
 use virtio::VirtioQueueCallbackWork;
 use vmcore::vm_task::VmTaskDriver;
 use vmcore::vm_task::VmTaskDriverSource;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 // These correspond to VIRTIO_NET_F_ flags.
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct NetworkFeatures {
     pub csum: bool,
     pub guest_csum: bool,
@@ -91,7 +94,7 @@ struct NetworkFeatures {
 
 // These correspond to VIRTIO_NET_S_ flags.
 #[bitfield(u16)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct NetStatus {
     pub link_up: bool,
     pub announce: bool,
@@ -119,7 +122,7 @@ struct NetConfig {
 
 // These correspond to VIRTIO_NET_HDR_F_ flags.
 #[bitfield(u8)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct VirtioNetHeaderFlags {
     pub needs_csum: bool,
     pub data_valid: bool,
@@ -129,7 +132,7 @@ struct VirtioNetHeaderFlags {
 }
 
 #[bitfield(u8)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct VirtioNetHeaderGso {
     #[bits(3)]
     pub protocol: VirtioNetHeaderGsoProtocol,
@@ -140,7 +143,7 @@ struct VirtioNetHeaderGso {
 
 // These correspond to VIRTIO_NET_HDR_GSO_ values.
 open_enum::open_enum! {
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     enum VirtioNetHeaderGsoProtocol: u8 {
         NONE = 0,
         TCPV4 = 1,
@@ -160,7 +163,7 @@ impl VirtioNetHeaderGsoProtocol {
     }
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 #[repr(C)]
 struct VirtioNetHeader {
     pub flags: u8,

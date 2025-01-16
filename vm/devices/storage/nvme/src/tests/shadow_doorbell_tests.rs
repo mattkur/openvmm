@@ -16,8 +16,11 @@ use pal_async::async_test;
 use pal_async::DefaultDriver;
 use pci_core::test_helpers::TestPciInterruptController;
 use user_driver::backoff::Backoff;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 const CQ_BASE: u64 = 0x0;
 const SQ_BASE: u64 = 0x1000;

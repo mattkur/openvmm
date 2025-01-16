@@ -6,9 +6,12 @@
 use bitfield_struct::bitfield;
 use core::mem::size_of;
 use guid::Guid;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 fn align_8(x: usize) -> usize {
     (x + 7) & !7
@@ -110,7 +113,7 @@ impl Default for Blob {
     }
 }
 
-pub trait BlobStructure: AsBytes + FromBytes {
+pub trait BlobStructure: zerocopy::KnownLayout + zerocopy::IntoBytes {
     const STRUCTURE_TYPE: BlobStructureType;
 }
 
@@ -200,7 +203,7 @@ pub enum BlobStructureType {
 // header.
 //
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct Header {
     pub structure_type: u32,
     pub length: u32,
@@ -213,14 +216,14 @@ pub struct Header {
 // NOTE: TotalConfigBlobSize is in bytes.
 //
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct StructureCount {
     pub total_structure_count: u32,
     pub total_config_blob_size: u32,
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct BiosInformation {
     pub bios_size_pages: u32,
     // struct {
@@ -247,7 +250,7 @@ pub const VM_MEMORY_RANGE_FLAG_PERSISTENT: u32 = 0x2;
 pub const VM_MEMORY_RANGE_FLAG_SPECIFIC_PURPOSE: u32 = 0x4;
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct MemoryRangeV5 {
     pub base_address: u64,
     pub length: u64,
@@ -256,7 +259,7 @@ pub struct MemoryRangeV5 {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct Entropy(pub [u8; 64]);
 
 impl Default for Entropy {
@@ -266,11 +269,11 @@ impl Default for Entropy {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct BiosGuid(pub Guid);
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct Smbios31ProcessorInformation {
     pub processor_id: u64,
     pub external_clock: u16,
@@ -286,7 +289,7 @@ pub struct Smbios31ProcessorInformation {
 }
 
 #[bitfield(u64, debug = false)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct Flags {
     pub serial_controllers_enabled: bool,
     pub pause_after_boot_failure: bool,
@@ -374,7 +377,7 @@ impl MemoryProtection {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct ProcessorInformation {
     pub max_processor_count: u32,
     pub processor_count: u32,
@@ -383,31 +386,31 @@ pub struct ProcessorInformation {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes, Copy, Clone)]
+#[derive(IntoBytes, Immutable, FromBytes, Copy, Clone)]
 pub struct Mmio {
     pub mmio_page_number_start: u64,
     pub mmio_size_in_pages: u64,
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct MmioRanges(pub [Mmio; 2]);
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct NvdimmCount {
     pub count: u16,
     pub padding: [u16; 3],
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct VpciInstanceFilter {
     pub instance_guid: Guid,
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct Gic {
     pub gic_distributor_base: u64,
     pub gic_redistributors_base: u64,

@@ -54,7 +54,10 @@ use sha2::Sha384;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 pub const DEFAULT_COMPATIBILITY_MASK: u32 = 0x1;

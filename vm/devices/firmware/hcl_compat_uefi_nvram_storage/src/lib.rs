@@ -27,9 +27,12 @@ use uefi_nvram_storage::NextVariable;
 use uefi_nvram_storage::NvramStorage;
 use uefi_nvram_storage::NvramStorageError;
 use uefi_nvram_storage::EFI_TIME;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 use zerocopy_helpers::FromBytesExt;
 
 const EFI_MAX_VARIABLE_NAME_SIZE: usize = 2 * 1024;
@@ -46,14 +49,14 @@ mod format {
     use static_assertions::const_assert_eq;
 
     open_enum! {
-        #[derive(AsBytes, FromBytes, FromZeroes)]
+        #[derive(IntoBytes, Immutable, FromBytes)]
         pub enum NvramHeaderType: u32 {
             VARIABLE = 0,
         }
     }
 
     #[repr(C)]
-    #[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
     pub struct NvramHeader {
         pub header_type: NvramHeaderType,
         pub length: u32, // Total length of the variable, in bytes. Includes the header.
@@ -62,7 +65,7 @@ mod format {
     const_assert_eq!(8, size_of::<NvramHeader>());
 
     #[repr(C)]
-    #[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
     pub struct NvramVariable {
         pub header: NvramHeader, // Set to type NvramVariable
         pub attributes: u32,

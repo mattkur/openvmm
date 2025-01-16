@@ -14,9 +14,11 @@ use scsi::AdditionalSenseCode;
 use scsi_buffers::RequestBuffers;
 use scsi_core::Request;
 use scsi_defs as scsi;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 /// Result of a get LBA status request.
 #[derive(Debug, Default, Copy, Clone)]

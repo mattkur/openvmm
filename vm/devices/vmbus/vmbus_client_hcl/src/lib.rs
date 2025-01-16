@@ -28,7 +28,10 @@ use std::task::Poll;
 use vmbus_async::async_dgram::AsyncRecv;
 use vmbus_client::SynicClient;
 use vmbus_client::VmbusMessageSource;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 /// Returns the synic client and message source for use with
 /// [`vmbus_client::VmbusClient`].

@@ -4,9 +4,9 @@
 //! AMD SEV-SNP specific definitions.
 
 use bitfield_struct::bitfield;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 // Interruption Information Field
 pub const SEV_INTR_TYPE_EXT: u32 = 0;
@@ -19,7 +19,7 @@ pub const REG_TWEAK_BITMAP_OFFSET: usize = 0x100;
 pub const REG_TWEAK_BITMAP_SIZE: usize = 0x40;
 
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevEventInjectInfo {
     pub vector: u8,
     #[bits(3)]
@@ -48,7 +48,7 @@ impl From<Vmpl> for u8 {
 
 /// A X64 selector register.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevSelector {
     pub selector: u16,
     pub attrib: u16,
@@ -78,7 +78,7 @@ impl From<u128> for SevSelector {
 
 /// An X64 XMM register.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevXmmRegister {
     low: u64,
     high: u64,
@@ -100,7 +100,7 @@ impl From<u128> for SevXmmRegister {
 }
 
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevFeatures {
     pub snp: bool,
     pub vtom: bool,
@@ -124,7 +124,7 @@ pub struct SevFeatures {
 }
 
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevVirtualInterruptControl {
     pub tpr: u8,
     pub irq: bool,
@@ -144,7 +144,7 @@ pub struct SevVirtualInterruptControl {
 }
 
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevRmpAdjust {
     pub target_vmpl: u8,
     pub enable_read: bool,
@@ -159,7 +159,7 @@ pub struct SevRmpAdjust {
 }
 
 #[bitfield(u32)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevIoAccessInfo {
     pub read_access: bool,
     #[bits(1)]
@@ -180,7 +180,7 @@ pub struct SevIoAccessInfo {
 }
 
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevNpfInfo {
     pub present: bool,
     pub read_write: bool,
@@ -205,7 +205,7 @@ pub struct SevNpfInfo {
 
 /// SEV VMSA structure representing CPU state
 #[repr(C)]
-#[derive(Debug, Clone, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Debug, Clone, IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevVmsa {
     // Selector Info
     pub es: SevSelector,
@@ -456,7 +456,7 @@ open_enum::open_enum! {
 /// Struct representing GHCB hypercall parameters. These are located at the GHCB
 /// page starting at [`GHCB_PAGE_HYPERCALL_PARAMETERS_OFFSET`].
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct GhcbHypercallParameters {
     pub output_gpa: u64,
     pub input_control: u64,
@@ -625,7 +625,7 @@ open_enum::open_enum! {
 }
 
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct GhcbMsr {
     #[bits(12)]
     pub info: u64,
@@ -637,7 +637,7 @@ pub struct GhcbMsr {
 
 /// PSP data structures.
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes, Clone, Copy)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes, Clone, Copy)]
 pub struct HvPspCpuidLeaf {
     pub eax_in: u32,
     pub ecx_in: u32,
@@ -653,7 +653,7 @@ pub struct HvPspCpuidLeaf {
 pub const HV_PSP_CPUID_LEAF_COUNT_MAX: usize = 64;
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes, Clone, Copy)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes, Clone, Copy)]
 pub struct HvPspCpuidPage {
     pub count: u32,
     pub reserved_z1: u32,
@@ -666,7 +666,7 @@ pub struct HvPspCpuidPage {
 /// Each structure is hashed with the previous structures digest to create a final
 /// measurement
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Clone, Copy, IntoBytes, Immutable, FromBytes)]
 pub struct SnpPageInfo {
     /// Set to the value of the previous page's launch digest
     pub digest_current: [u8; 48],
@@ -687,7 +687,7 @@ pub struct SnpPageInfo {
 
 open_enum::open_enum! {
     /// The type of page described by [`SnpPageInfo`]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum SnpPageType: u8 {
         /// Reserved
         RESERVED = 0x0,
@@ -710,7 +710,7 @@ open_enum::open_enum! {
 /// The signature of the hash of this struct is the id_key_signature for
 /// `igvm_defs::IGVM_VHS_SNP_ID_BLOCK`.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Clone, Copy, IntoBytes, Immutable, FromBytes)]
 pub struct SnpPspIdBlock {
     /// completed launch digest of IGVM file
     pub ld: [u8; 48],
@@ -727,7 +727,7 @@ pub struct SnpPspIdBlock {
 }
 
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevStatusMsr {
     pub sev_enabled: bool,
     pub es_enabled: bool,
@@ -751,7 +751,7 @@ pub struct SevStatusMsr {
 }
 
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevInvlpgbRax {
     pub va_valid: bool,
     pub pcid_valid: bool,
@@ -766,7 +766,7 @@ pub struct SevInvlpgbRax {
 }
 
 #[bitfield(u32)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevInvlpgbEdx {
     #[bits(16)]
     pub asid: u64,
@@ -777,7 +777,7 @@ pub struct SevInvlpgbEdx {
 }
 
 #[bitfield(u32)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct SevInvlpgbEcx {
     #[bits(16)]
     pub additional_count: u64,

@@ -43,8 +43,11 @@ use crate::TPM_RSA_SRK_HANDLE;
 use inspect::InspectMut;
 use ms_tpm_20_ref::MsTpm20RefPlatform;
 use thiserror::Error;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 // The size of command and response buffers.
 // DEVNOTE: The specification only requires the size to be large
@@ -1615,7 +1618,7 @@ mod tests {
     use ms_tpm_20_ref::DynResult;
     use std::time::Instant;
     use tpm20proto::AlgId;
-    use zerocopy::FromZeroes;
+    
 
     const TPM_AZURE_EK_HANDLE: ReservedHandle = ReservedHandle::new(TPM20_HT_PERSISTENT, 0x010001);
     const AUTH_VALUE: u64 = 0x7766554433221100;

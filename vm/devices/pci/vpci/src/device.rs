@@ -43,9 +43,12 @@ use vmcore::vpci_msi::MsiAddressData;
 use vmcore::vpci_msi::RegisterInterruptError;
 use vmcore::vpci_msi::VpciInterruptMapper;
 use vmcore::vpci_msi::VpciInterruptParameters;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+
 use zerocopy::Ref;
 
 const PCI_MAX_MSI_VECTOR_COUNT: u16 = 32;
@@ -85,7 +88,7 @@ impl MmioResource {
         let len = self.len;
         let mut flags = protocol::ResourceFlags::new();
         let (resource_type, shift) = if len == 0 {
-            return FromZeroes::new_zeroed();
+            return FromZeros::new_zeroed();
         } else if len < 1 << 32 {
             (protocol::ResourceType::MEMORY, 0)
         } else if len < 1 << 40 {
@@ -271,7 +274,7 @@ fn parse_packet<T: RingMem>(packet: &queue::DataPacket<'_, T>) -> Result<PacketD
 
     let data = match message_type {
         protocol::MessageType::ASSIGNED_RESOURCES | protocol::MessageType::ASSIGNED_RESOURCES2 => {
-            let (msg, rest) = Ref::<_, protocol::DeviceTranslate>::new_from_prefix(buf)
+            let (msg, rest) = Ref::<_, protocol::DeviceTranslate>::from_prefix(buf)
                 .ok_or(PacketError::PacketTooSmall("translate"))?;
 
             if msg.msi_resource_count > protocol::MAX_SUPPORTED_INTERRUPT_MESSAGES {
@@ -421,7 +424,7 @@ enum WorkerError {
 }
 
 impl<T: RingMem> Connection<T> {
-    async fn send_packet<P: AsBytes + Debug>(&mut self, payload: &P) -> Result<(), WorkerError> {
+    async fn send_packet<P: IntoBytes + Debug>(&mut self, payload: &P) -> Result<(), WorkerError> {
         tracing::trace!(?payload, "send packet");
         self.queue
             .split()
@@ -442,7 +445,7 @@ impl<T: RingMem> Connection<T> {
         write.wait_ready(len).await.map_err(WorkerError::Queue)
     }
 
-    fn send_completion<P: AsBytes + Debug>(
+    fn send_completion<P: IntoBytes + Debug>(
         &mut self,
         transaction_id: Option<u64>,
         payload: &P,
@@ -719,7 +722,7 @@ impl ReadyState {
                         conn.send_completion(transaction_id, &protocol::Status::SUCCESS, &[])?;
                     }
                     DeviceRequest::CreateInterrupt { interrupt } => {
-                        let mut resource = FromZeroes::new_zeroed();
+                        let mut resource = FromZeros::new_zeroed();
                         dev.map_interrupts(&[interrupt], &mut |r| resource = r)?;
                         conn.send_completion(
                             transaction_id,
@@ -1197,8 +1200,11 @@ mod tests {
     use vmbus_async::queue::Queue;
     use vmbus_ring as ring;
     use vmcore::vpci_msi::VpciInterruptMapper;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+    use zerocopy::KnownLayout;
+
     use zerocopy::FromBytes;
+    use zerocopy::Immutable;
 
     enum ReadPacketInfo {
         None,
@@ -1268,7 +1274,7 @@ mod tests {
             }
         }
 
-        async fn read_packet<T: AsBytes + FromBytes>(
+        async fn read_packet<T: zerocopy::KnownLayout + zerocopy::IntoBytes>(
             &mut self,
             pkt_info: &mut ReadPacketInfo,
         ) -> Result<T, GuestError> {
@@ -1291,7 +1297,7 @@ mod tests {
             }
         }
 
-        async fn write_packet<T: AsBytes>(
+        async fn write_packet<T: IntoBytes>(
             &mut self,
             transaction_id: Option<u64>,
             payload: &T,

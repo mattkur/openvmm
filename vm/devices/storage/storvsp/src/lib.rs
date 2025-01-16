@@ -96,9 +96,11 @@ use vmcore::save_restore::SaveError;
 use vmcore::save_restore::SavedStateBlob;
 use vmcore::vm_task::VmTaskDriver;
 use vmcore::vm_task::VmTaskDriverSource;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 pub struct StorageDevice {
     instance_id: Guid,
@@ -480,7 +482,7 @@ impl WorkerInner {
             })
     }
 
-    fn send_packet<M: RingMem, P: AsBytes>(
+    fn send_packet<M: RingMem, P: IntoBytes>(
         &mut self,
         writer: &mut queue::WriteHalf<'_, M>,
         operation: protocol::Operation,
@@ -498,7 +500,7 @@ impl WorkerInner {
         )
     }
 
-    fn send_completion<M: RingMem, P: AsBytes>(
+    fn send_completion<M: RingMem, P: IntoBytes>(
         &mut self,
         writer: &mut queue::WriteHalf<'_, M>,
         packet: &Packet,
@@ -1623,7 +1625,7 @@ impl VmbusDevice for StorageDevice {
                 path_id: path.path,
                 target_id: path.target,
                 flags: protocol::OFFER_PROPERTIES_FLAG_IDE_DEVICE,
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             };
             let mut user_defined = UserDefinedData::new_zeroed();
             offer_properties

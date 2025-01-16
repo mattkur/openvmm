@@ -10,9 +10,12 @@ use hvdef::HV_PAGE_SIZE;
 use inspect::Inspect;
 use open_enum::open_enum;
 use static_assertions::const_assert_eq;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 // Number of pages for each type of parameter in the vtl 2 unmeasured config
 // region.
@@ -110,7 +113,7 @@ pub const PARAVISOR_LOCAL_MAP_SIZE: u64 = 0x200000;
 
 open_enum! {
     /// Underhill command line policy.
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum CommandLinePolicy : u16 {
         /// Use the static command line encoded only.
         STATIC = 0,
@@ -125,7 +128,7 @@ pub const COMMAND_LINE_SIZE: usize = 4092;
 
 /// Command line information. This structure is an exclusive measured page.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct ParavisorCommandLine {
     /// The policy Underhill should use.
     pub policy: CommandLinePolicy,
@@ -151,7 +154,7 @@ const_assert_eq!(size_of::<ParavisorCommandLine>(), HV_PAGE_SIZE as usize);
 
 /// Describes a region of guest memory.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, PartialEq)]
 pub struct PageRegionDescriptor {
     /// Guest physical page number for the base of this region.
     pub base_page_number: u64,
@@ -204,7 +207,7 @@ impl PageRegionDescriptor {
 
 /// The header field of the imported pages region page.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, PartialEq)]
 pub struct ImportedRegionsPageHeader {
     /// The cryptographic hash of the unaccepted pages.
     pub sha384_hash: [u8; 48],
@@ -212,7 +215,7 @@ pub struct ImportedRegionsPageHeader {
 
 /// Describes a region of guest memory that has been imported into VTL2.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, PartialEq)]
 pub struct ImportedRegionDescriptor {
     /// Guest physical page number for the base of this region.
     pub base_page_number: u64,
@@ -274,7 +277,7 @@ impl ImportedRegionDescriptor {
 
 /// Measured config about linux loaded into VTL0.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 #[cfg_attr(feature = "inspect", derive(Inspect))]
 pub struct LinuxInfo {
     /// The memory the kernel was loaded into.
@@ -291,7 +294,7 @@ pub struct LinuxInfo {
 
 /// Measured config about UEFI loaded into VTL0.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 #[cfg_attr(feature = "inspect", derive(Inspect))]
 pub struct UefiInfo {
     /// The information about where UEFI's firmware and misc pages are.
@@ -303,7 +306,7 @@ pub struct UefiInfo {
 /// Measured config about what this image can support loading in VTL0.
 #[cfg_attr(feature = "inspect", derive(Inspect))]
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct SupportedVtl0LoadInfo {
     /// This image supports UEFI.
     #[bits(1)]
@@ -324,7 +327,7 @@ pub struct SupportedVtl0LoadInfo {
 /// information is known at file build time, measured, and deposited as part of
 /// the initial launch data.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 #[cfg_attr(feature = "inspect", derive(Inspect))]
 pub struct ParavisorMeasuredVtl0Config {
     /// Magic value. Must be [`Self::MAGIC`].
@@ -357,7 +360,7 @@ pub const PARAVISOR_VTL0_MEASURED_CONFIG_BASE_PAGE_AARCH64: u64 = 16 << (20 - 12
 
 /// Paravisor measured config for vtl2.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 #[cfg_attr(feature = "inspect", derive(Inspect))]
 pub struct ParavisorMeasuredVtl2Config {
     /// Magic value. Must be [`Self::MAGIC`].

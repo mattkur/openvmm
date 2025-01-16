@@ -12,7 +12,10 @@ use openhcl_attestation_protocol::vmgs;
 use openhcl_attestation_protocol::vmgs::HardwareKeyProtector;
 use openssl_kdf::kdf::Kbkdf;
 use thiserror::Error;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 #[derive(Debug, Error)]
 pub(crate) enum HardwareDerivedKeysError {

@@ -12,7 +12,10 @@ use x86defs::cpuid::Vendor;
 use x86defs::RFlags;
 use x86emu::Gp;
 use x86emu::Segment;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 /// Implements [`EmulatorSupport`] with some features for deliberately

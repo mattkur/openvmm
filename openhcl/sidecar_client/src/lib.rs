@@ -47,7 +47,10 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::task::Waker;
 use thiserror::Error;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 mod ioctl {
@@ -504,7 +507,7 @@ impl<'a> SidecarVp<'a> {
         Ok(output)
     }
 
-    fn set_command<T: AsBytes, S: AsBytes + FromBytes>(
+    fn set_command<T: IntoBytes, Immutable, S: zerocopy::KnownLayout + zerocopy::IntoBytes>(
         &mut self,
         command: SidecarCommand,
         input: T,
@@ -528,7 +531,7 @@ impl<'a> SidecarVp<'a> {
     fn dispatch_sync<O: FromBytes>(
         &mut self,
         command: SidecarCommand,
-        input: impl AsBytes,
+        input: impl IntoBytes, Immutable,
     ) -> Result<&O, SidecarError> {
         self.set_command::<_, u8>(command, input, 0);
         self.run_sync()?;

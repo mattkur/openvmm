@@ -12,7 +12,10 @@ use crate::PAGE_SIZE;
 use crate::PAGE_SIZE64;
 use guestmem::ranges::PagedRange;
 use guestmem::GuestMemory;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 const PRP_PER_PAGE: usize = PAGE_SIZE / 8;
 

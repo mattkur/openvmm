@@ -9,9 +9,12 @@
 #![expect(missing_docs)]
 
 use static_assertions::const_assert_eq;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 #[allow(non_camel_case_types)]
 mod packed_nums {
@@ -22,7 +25,7 @@ mod packed_nums {
 use self::packed_nums::*;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct apm_bios_info {
     pub version: u16,
     pub cseg: u16,
@@ -36,7 +39,7 @@ pub struct apm_bios_info {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct screen_info {
     pub orig_x: u8,
     pub orig_y: u8,
@@ -76,14 +79,14 @@ pub struct screen_info {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct sys_desc_table {
     pub length: u16,
     pub table: [u8; 14],
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct olpc_ofw_header {
     pub ofw_magic: u32,
     pub ofw_version: u32,
@@ -92,13 +95,13 @@ pub struct olpc_ofw_header {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct edid_info {
     pub dummy: [u8; 128],
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct efi_info {
     pub efi_loader_signature: u32,
     pub efi_systab: u32,
@@ -111,7 +114,7 @@ pub struct efi_info {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct setup_header {
     pub setup_sects: u8,
     pub root_flags: u16_ne,
@@ -161,7 +164,7 @@ pub const E820_NVS: u32 = 4;
 pub const E820_UNUSABLE: u32 = 5;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct e820entry {
     pub addr: u64_ne,
     pub size: u64_ne,
@@ -169,7 +172,7 @@ pub struct e820entry {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct edd_info {
     pub device: u8,
     pub version: u8,
@@ -181,7 +184,7 @@ pub struct edd_info {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct edd_device_params {
     pub length: u16,
     pub info_flags: u16,
@@ -204,7 +207,7 @@ pub struct edd_device_params {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct ist_info {
     pub signature: u32,
     pub command: u32,
@@ -213,7 +216,7 @@ pub struct ist_info {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct boot_params {
     pub screen_info: screen_info,
     pub apm_bios_info: apm_bios_info,
@@ -251,7 +254,7 @@ pub struct boot_params {
 
 impl Default for boot_params {
     fn default() -> Self {
-        FromZeroes::new_zeroed()
+        FromZeros::new_zeroed()
     }
 }
 
@@ -259,7 +262,7 @@ const_assert_eq!(size_of::<boot_params>(), 4096);
 
 // This must be aligned so that it doesn't straddle a page boundary.
 #[repr(C, align(16))]
-#[derive(Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct setup_data {
     pub next: u64,
     pub ty: u32,
@@ -271,7 +274,7 @@ pub const SETUP_DTB: u32 = 2;
 pub const SETUP_CC_BLOB: u32 = 7;
 
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct cc_blob_sev_info {
     pub magic: u32,
     pub version: u16,
@@ -287,7 +290,7 @@ pub struct cc_blob_sev_info {
 pub const CC_BLOB_SEV_INFO_MAGIC: u32 = 0x45444d41;
 
 #[repr(C, align(16))]
-#[derive(Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct cc_setup_data {
     pub header: setup_data,
     pub cc_blob_address: u32,

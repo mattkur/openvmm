@@ -1648,7 +1648,10 @@ mod tests {
     use vmbus_core::protocol::ChannelId;
     use vmbus_core::protocol::VmbusMessage;
     use vmcore::synic::SynicPortAccess;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
     use zerocopy::FromBytes;
 
     struct MockSynicInner {
@@ -1668,11 +1671,11 @@ mod tests {
             }
         }
 
-        fn send_message(&self, msg: impl VmbusMessage + AsBytes) {
+        fn send_message(&self, msg: impl VmbusMessage + IntoBytes) {
             self.send_message_core(OutgoingMessage::new(&msg), false);
         }
 
-        fn send_message_trusted(&self, msg: impl VmbusMessage + AsBytes) {
+        fn send_message_trusted(&self, msg: impl VmbusMessage + IntoBytes) {
             self.send_message_core(OutgoingMessage::new(&msg), true);
         }
 

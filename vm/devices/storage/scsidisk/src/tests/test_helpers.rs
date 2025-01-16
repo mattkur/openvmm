@@ -24,7 +24,10 @@ use scsi_core::AsyncScsiDisk;
 use scsi_core::Request;
 use scsi_core::ScsiResult;
 use std::sync::Arc;
-use zerocopy::AsBytes;
+
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 #[derive(Debug)]
 pub struct TestDiskStorageState {

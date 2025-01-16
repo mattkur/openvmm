@@ -18,9 +18,11 @@ use guestmem::MemoryWrite;
 use scsi::AdditionalSenseCode;
 use scsi::ScsiOp;
 use scsi_core::Request;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 fn from_scsi_reservation_type(
     scsi_type: scsi::ReservationType,
@@ -163,7 +165,7 @@ impl SimpleScsiDisk {
         allocation_length: usize,
     ) -> Result<usize, ScsiError> {
         #[repr(C)]
-        #[derive(AsBytes, FromBytes, FromZeroes)]
+        #[derive(IntoBytes, Immutable, FromBytes)]
         struct Output {
             header: PriReservationListHeader,
             descriptor: PriReservationDescriptor,
@@ -198,7 +200,7 @@ impl SimpleScsiDisk {
                         .find_map(|d| d.holds_reservation.then_some(d.key))
                         .unwrap_or(0)
                         .into(),
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 },
             };
             has_reservation.as_bytes()
@@ -254,7 +256,7 @@ impl SimpleScsiDisk {
                 ),
                 relative_target_port_identifier: controller.controller_id.into(),
                 additional_descriptor_length: (controller.host_id.len() as u32).into(),
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             };
 
             data.extend(header.as_bytes());

@@ -5,20 +5,23 @@ use guestmem::ranges::PagedRange;
 use smallvec::smallvec;
 use smallvec::SmallVec;
 use thiserror::Error;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 const PAGE_SIZE: usize = 4096;
 
 pub type GpnList = SmallVec<[u64; 64]>;
 
 pub fn zeroed_gpn_list(len: usize) -> GpnList {
-    smallvec![FromZeroes::new_zeroed(); len]
+    smallvec![FromZeros::new_zeroed(); len]
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct GpaRange {
     pub len: u32,
     pub offset: u32,

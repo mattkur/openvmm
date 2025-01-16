@@ -46,9 +46,12 @@ use vmbus_async::pipe::MessagePipe;
 use vmbus_async::pipe::MessageReadHalf;
 use vmbus_async::pipe::MessageWriteHalf;
 use vmbus_user_channel::MappedRingMem;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 const CRASHDMP_VDEV_MAX_TX_BYTES: usize = 4096 * 4; // 16 KB
 const KMSG_NOTE_BYTES: usize = 1024 * 256; // 256 KB
@@ -108,7 +111,7 @@ impl OsVersionInfo {
     }
 }
 
-async fn read_message<T: AsBytes + FromBytes>(
+async fn read_message<T: zerocopy::KnownLayout + zerocopy::IntoBytes>(
     pipe: &mut MessageReadHalf<'_, MappedRingMem>,
 ) -> anyhow::Result<T> {
     let mut message = T::new_zeroed();

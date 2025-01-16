@@ -6,9 +6,12 @@
 use bitfield_struct::bitfield;
 use core::fmt::Display;
 use static_assertions::const_assert_eq;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// UEFI Time Structure
 ///
@@ -25,7 +28,7 @@ use zerocopy::FromZeroes;
 ///  TimeZone:   -1440 to 1440 or 2047
 /// ```
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 #[cfg_attr(feature = "inspect", derive(inspect::Inspect), inspect(display))]
 pub struct EFI_TIME {
     pub year: u16,
@@ -97,7 +100,7 @@ pub const EFI_UNSPECIFIED_TIMEZONE: EfiTimezone = EfiTimezone(0x07FF);
 /// Timezone in minutes from UTC
 ///
 /// Valid values include -1440 to 1440 or 2047 (EFI_UNSPECIFIED_TIMEZONE)
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 #[repr(transparent)]
 #[cfg_attr(feature = "inspect", derive(inspect::Inspect), inspect(transparent))]
 pub struct EfiTimezone(pub i16);
@@ -111,7 +114,7 @@ impl EfiTimezone {
 /// Bit Definitions for EFI_TIME.EfiDaylight
 /// from UEFI spec 8.3 - Time Services
 #[bitfield(u8)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 #[cfg_attr(feature = "inspect", derive(inspect::Inspect), inspect(transparent))]
 pub struct EfiDaylight {
     /// EFI_TIME_ADJUST_DAYLIGHT

@@ -28,8 +28,11 @@ use stackfuture::StackFuture;
 use std::sync::Arc;
 use vmcore::save_restore::RestoreError;
 use vmcore::save_restore::SaveError;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 /// A wrapper to filter and redirect ATAPI SCSI commands from an IDE ISO to inner [`AsyncScsiDisk`].
 #[derive(Inspect)]

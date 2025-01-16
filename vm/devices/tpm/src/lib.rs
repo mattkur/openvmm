@@ -50,7 +50,10 @@ use tpm_resources::TpmRegisterLayout;
 use vmcore::device_state::ChangeDeviceState;
 use vmcore::non_volatile_store::NonVolatileStore;
 use vmcore::non_volatile_store::NonVolatileStoreError;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 pub const TPM_DEVICE_MMIO_REGION_BASE_ADDRESS: u64 = 0xfed40000;
@@ -1233,13 +1236,16 @@ impl MmioIntercept for Tpm {
 /// The IO port interface bespoke to the Hyper-V implementation of the vTPM.
 mod io_port_interface {
     use inspect::Inspect;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
     use zerocopy::FromBytes;
-    use zerocopy::FromZeroes;
+    
 
     open_enum::open_enum! {
         /// I/O port command definitions
-        #[derive(Inspect, AsBytes, FromBytes, FromZeroes)]
+        #[derive(Inspect, IntoBytes, Immutable, FromBytes)]
         #[inspect(debug)]
         pub enum TpmIoCommand: u32 {
             /// It can be used for engine vs. guest version negotiation. Not used.
@@ -1279,7 +1285,7 @@ mod io_port_interface {
         /// Table 2: Physical Presence Interface Operation Summary for TPM 2.0
         ///
         /// Part of the Physical Presence Interface Specification - TCG PC Client Platform
-        #[derive(Inspect, AsBytes, FromBytes, FromZeroes)]
+        #[derive(Inspect, IntoBytes, Immutable, FromBytes)]
         #[inspect(debug)]
         pub enum PpiOperation: u32 {
             NO_OP = 0,
@@ -1308,11 +1314,14 @@ mod persist_restore {
     use super::*;
 
     mod state {
-        use zerocopy::AsBytes;
-        use zerocopy::FromBytes;
-        use zerocopy::FromZeroes;
+        use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
-        #[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+use zerocopy::Immutable;
+        use zerocopy::FromBytes;
+        
+
+        #[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
         #[repr(C)]
         pub struct PersistedPpiState {
             pub pending_ppi_operation: u32,

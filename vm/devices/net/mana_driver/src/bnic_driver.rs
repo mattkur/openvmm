@@ -31,9 +31,12 @@ use gdma_defs::GdmaDevId;
 use gdma_defs::GdmaQueueType;
 use gdma_defs::GdmaReqHdr;
 use user_driver::DeviceBacking;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 pub struct BnicDriver<'a, T: DeviceBacking> {
     gdma: &'a mut GdmaDriver<T>,
@@ -154,7 +157,7 @@ impl<'a, T: DeviceBacking> BnicDriver<'a, T> {
         config: &RxConfig<'_>,
     ) -> anyhow::Result<()> {
         #[repr(C)]
-        #[derive(AsBytes, FromBytes, FromZeroes)]
+        #[derive(IntoBytes, Immutable, FromBytes)]
         struct Req {
             req: ManaCfgRxSteerReq,
             table: [u64; 128],
@@ -174,7 +177,7 @@ impl<'a, T: DeviceBacking> BnicDriver<'a, T> {
                 default_rxobj: config.default_rxobj.unwrap_or(0),
                 hashkey: *config.hash_key.unwrap_or(&[0; 40]),
             },
-            table: FromZeroes::new_zeroed(),
+            table: FromZeros::new_zeroed(),
         };
         if let Some(table) = config.indirection_table {
             req.table[..table.len()].copy_from_slice(table);

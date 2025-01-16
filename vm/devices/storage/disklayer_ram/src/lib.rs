@@ -399,7 +399,10 @@ mod tests {
     use pal_async::async_test;
     use scsi_buffers::OwnedRequestBuffers;
     use test_with_tracing::test;
-    use zerocopy::AsBytes;
+
+    use zerocopy::Immutable;
+    use zerocopy::IntoBytes;
+    use zerocopy::KnownLayout;
 
     const SECTOR_U64: u64 = SECTOR_SIZE as u64;
     const SECTOR_USIZE: usize = SECTOR_SIZE as usize;

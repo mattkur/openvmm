@@ -31,9 +31,12 @@ use winapi::shared::basetsd;
 use winapi::shared::ntdef;
 use winapi::shared::ntstatus;
 use winapi::um::winnt;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 const DOT_ENTRY_COUNT: lx::off_t = 2;
 
@@ -1038,7 +1041,7 @@ impl LxVolume {
             /// See ntifs.h REPARSE_DATA_BUFFER.
             #[allow(non_snake_case)]
             #[repr(C)]
-            #[derive(Clone, Copy, AsBytes, FromBytes, FromZeroes)]
+            #[derive(Clone, Copy, IntoBytes, Immutable, FromBytes)]
             struct REPARSE_DATA_BUFFER {
                 ReparseTag: u32,
                 ReparseDataLength: u16,

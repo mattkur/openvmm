@@ -188,9 +188,12 @@ pub mod hwid {
 pub mod cfg_space {
     use bitfield_struct::bitfield;
     use inspect::Inspect;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
     use zerocopy::FromBytes;
-    use zerocopy::FromZeroes;
+    
 
     open_enum::open_enum! {
         /// Offsets into the type 00h configuration space header.
@@ -261,7 +264,7 @@ pub mod cfg_space {
     /// Command Register
     #[derive(Inspect)]
     #[bitfield(u16)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct Command {
         pub pio_enabled: bool,
         pub mmio_enabled: bool,
@@ -282,7 +285,7 @@ pub mod cfg_space {
 
     /// Status Register
     #[bitfield(u16)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct Status {
         #[bits(3)]
         _reserved: u16,

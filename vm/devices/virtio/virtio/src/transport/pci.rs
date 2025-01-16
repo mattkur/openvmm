@@ -653,10 +653,13 @@ pub(crate) mod capabilities {
     use crate::spec::pci::VIRTIO_PCI_CAP_NOTIFY_CFG;
     use pci_core::spec::caps::CapabilityId;
 
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
     #[repr(C)]
-    #[derive(Debug, AsBytes)]
+    #[derive(Debug, IntoBytes)]
     pub struct VirtioCapabilityCommon {
         cap_id: u8,
         cap_next: u8,
@@ -686,7 +689,7 @@ pub(crate) mod capabilities {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes)]
+    #[derive(Debug, IntoBytes)]
     pub struct VirtioCapability {
         common: VirtioCapabilityCommon,
     }
@@ -707,7 +710,7 @@ pub(crate) mod capabilities {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes)]
+    #[derive(Debug, IntoBytes)]
     pub struct VirtioCapability64 {
         common: VirtioCapabilityCommon,
         offset_hi: u32,
@@ -732,7 +735,7 @@ pub(crate) mod capabilities {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes)]
+    #[derive(Debug, IntoBytes)]
     pub struct VirtioNotifyCapability {
         common: VirtioCapabilityCommon,
         offset_multiplier: u32,

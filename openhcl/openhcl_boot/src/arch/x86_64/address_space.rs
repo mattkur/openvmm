@@ -19,9 +19,12 @@ use core::sync::atomic::AtomicU64;
 use core::sync::atomic::Ordering;
 use memory_range::MemoryRange;
 use x86defs::X64_LARGE_PAGE_SIZE;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 const X64_PTE_PRESENT: u64 = 1;
 const X64_PTE_READ_WRITE: u64 = 1 << 1;
@@ -35,7 +38,7 @@ const PAGE_TABLE_ENTRY_COUNT: usize = 512;
 const X64_PAGE_SHIFT: u64 = 12;
 const X64_PTE_BITS: u64 = 9;
 
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 #[repr(transparent)]
 struct PageTableEntry {
     entry: u64,
@@ -103,7 +106,7 @@ impl PageTableEntry {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 struct PageTable {
     entries: [PageTableEntry; PAGE_TABLE_ENTRY_COUNT],
 }

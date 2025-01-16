@@ -13,8 +13,11 @@ use vm_topology::memory::MemoryLayout;
 use x86defs::GdtEntry;
 use x86defs::X64_DEFAULT_CODE_SEGMENT_ATTRIBUTES;
 use x86defs::X64_DEFAULT_DATA_SEGMENT_ATTRIBUTES;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 const DEFAULT_GDT_COUNT: usize = 4;
 /// The size of the default GDT table, in bytes.

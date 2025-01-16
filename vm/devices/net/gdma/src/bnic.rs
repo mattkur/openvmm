@@ -61,9 +61,12 @@ use task_control::AsyncRun;
 use task_control::InspectTaskMut;
 use task_control::StopTask;
 use task_control::TaskControl;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 pub struct GuestBuffers {
     gm: GuestMemory,
@@ -146,7 +149,7 @@ impl BufferAccess for GuestBuffers {
                 .with_client_type(MANA_CQE_COMPLETION),
             rx_wqe_offset: packet.wqe_offset,
             flags,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         packet.oob.ppi[0].pkt_len = metadata.len as u16;
     }
@@ -521,7 +524,7 @@ impl TxRxTask {
         } else {
             ManaTxOob {
                 s_oob: ManaTxShortOob::read_from_prefix(oob).context("oob too small")?,
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             }
         };
 
@@ -607,7 +610,7 @@ impl TxRxTask {
             segments,
             len,
             wqe_offset,
-            oob: FromZeroes::new_zeroed(),
+            oob: FromZeros::new_zeroed(),
         };
         let id = RxId(self.rx_packets.lock().insert(packet) as u32);
         self.epqueue.rx_avail(&[id]);

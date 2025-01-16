@@ -6,10 +6,12 @@
 #![no_std]
 
 use zerocopy::FromBytes;
+use zerocopy::Immutable;
 use zerocopy::Ref;
 use zerocopy::Unalign;
 
-pub trait FromBytesExt: FromBytes {
+// mattkur TODO
+pub trait FromBytesExt: FromBytes + Immutable {
     /// Reads a copy of Self from the prefix of bytes. Returns both the copy of Self and the remaining unused bytes.
     fn read_from_prefix_split(bytes: &[u8]) -> Option<(Self, &[u8])>
     where

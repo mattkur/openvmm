@@ -4,8 +4,9 @@
 use super::protocol::*;
 use std::io;
 use std::io::Write;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 /// Trait used by objects that send FUSE replies to the kernel.
 pub trait ReplySender {
@@ -19,7 +20,11 @@ pub trait ReplySender {
     }
 
     /// Send a reply with a struct as an argument.
-    fn send_arg<T: std::fmt::Debug + AsBytes>(&mut self, unique: u64, arg: T) -> io::Result<()> {
+    fn send_arg<T: std::fmt::Debug + IntoBytes + Immutable>(
+        &mut self,
+        unique: u64,
+        arg: T,
+    ) -> io::Result<()> {
         tracing::trace!(unique, ?arg, "reply");
         let header = make_header(unique, size_of_val(&arg), 0);
         let header = header.as_bytes();
@@ -47,7 +52,7 @@ pub trait ReplySender {
     }
 
     /// Send a reply with a struct argument and arbitrary data.
-    fn send_arg_data<T: std::fmt::Debug + AsBytes>(
+    fn send_arg_data<T: std::fmt::Debug + IntoBytes + Immutable>(
         &mut self,
         unique: u64,
         arg: T,

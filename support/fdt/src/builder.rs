@@ -7,8 +7,11 @@ use crate::spec;
 use core::marker::PhantomData;
 use core::mem::size_of;
 use thiserror::Error;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 /// The FDT builder.
 ///

@@ -9,9 +9,12 @@ use core::fmt::Debug;
 use guid::Guid;
 use open_enum::open_enum;
 use static_assertions::const_assert_eq;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// Maximum message size for all messages.
 pub const MAX_MESSAGE_SIZE: usize = 512;
@@ -46,7 +49,7 @@ const fn make_version(major: u16, minor: u16) -> u32 {
 
 open_enum! {
     /// Protocol versions.
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum ProtocolVersions: u32 {
         /// Represents the MANGANESE protocol version.
         MANGANESE = make_version(1, 0),
@@ -55,7 +58,7 @@ open_enum! {
 
 open_enum! {
     /// Header message versions.
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum MessageVersions: u8 {
         /// Invalid version.
         INVALID          = 0,
@@ -66,7 +69,7 @@ open_enum! {
 
 open_enum! {
     /// Enum for the different message types.
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum MessageTypes: u8 {
         /// Invalid message type.
         INVALID            = 0,
@@ -84,7 +87,7 @@ open_enum! {
 open_enum! {
     /// Enum for the different host notification messages.
     /// These are aysynchronous messages sent by the HCL to the Host.
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum HostNotifications: u8 {
         /// Invalid message.
         INVALID           = 0,
@@ -98,7 +101,7 @@ open_enum! {
 open_enum! {
     /// Enum for the different guest notification messages.
     /// These are asynchronous messages sent by the Host to the HCL.
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum GuestNotifications: u8 {
         /// Invalid message.
         INVALID           = 0,
@@ -117,7 +120,7 @@ open_enum! {
     /// These are synchronous messages sent by the HCL to the host.
     /// Note that the host response shares the same enum.
     /// (Each request has a response of the same ID)
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum HostRequests: u16 {
         /// Invalid message.
         INVALID     = 0,
@@ -147,7 +150,7 @@ open_enum! {
 /// currently unused for anything, just have a wrapper struct with accessor methods for
 /// individual field types.
 #[repr(transparent)]
-#[derive(Copy, Clone, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct MessageId(pub u16);
 
 impl Debug for MessageId {
@@ -189,7 +192,7 @@ impl MessageId {
 
 /// A protocol message header.
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes, PartialEq, Eq)]
 pub struct Header {
     /// The message version.
     pub message_version: MessageVersions,
@@ -320,7 +323,7 @@ pub const UART_MSG_MAX_PAYLOAD: usize = 64;
 
 /// Host notification message that TX data is available.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct TxDataAvailableMessage {
     /// The message header.
     pub header: Header,
@@ -349,7 +352,7 @@ const_assert_eq!(70, size_of::<TxDataAvailableMessage>());
 
 /// Guest notification that the connection state of the serial port has changed.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct SetModumStatusMessage {
     /// The message header.
     pub header: Header,
@@ -365,7 +368,7 @@ const_assert_eq!(6, size_of::<SetModumStatusMessage>());
 
 /// A version negotiation request sent from the guest to host.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct VersionRequestMessage {
     /// The message header.
     pub header: Header,
@@ -386,7 +389,7 @@ const_assert_eq!(8, size_of::<VersionRequestMessage>());
 
 /// A version negotiation response sent from host to guest.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct VersionRequestResponse {
     /// The message header.
     pub header: Header,
@@ -400,7 +403,7 @@ const_assert_eq!(6, size_of::<VersionRequestResponse>());
 
 /// A response to an RX Data host request message that contains RX data.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct RxDataResponse {
     /// The message header.
     pub header: Header,

@@ -12,9 +12,9 @@
 #![allow(dead_code)]
 #![allow(unused_parens)]
 
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 /*
  * Version negotiation:
@@ -49,7 +49,7 @@ pub const FUSE_ROOT_ID: u64 = 1;
 userspace works under 64bit kernels */
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_attr {
     pub ino: u64,
     pub size: u64,
@@ -70,7 +70,7 @@ pub struct fuse_attr {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_kstatfs {
     pub blocks: u64,
     pub bfree: u64,
@@ -85,7 +85,7 @@ pub struct fuse_kstatfs {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_file_lock {
     pub start: u64,
     pub end: u64,
@@ -331,7 +331,7 @@ pub const FUSE_MIN_READ_BUFFER: u32 = 8192;
 pub const FUSE_COMPAT_ENTRY_OUT_SIZE: u32 = 120;
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_entry_out {
     pub nodeid: u64, /* Inode ID */
     pub generation: u64, /* Inode generation: nodeid:gen must
@@ -344,27 +344,27 @@ pub struct fuse_entry_out {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_forget_in {
     pub nlookup: u64,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_forget_one {
     pub nodeid: u64,
     pub nlookup: u64,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_batch_forget_in {
     pub count: u32,
     pub dummy: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_getattr_in {
     pub getattr_flags: u32,
     pub dummy: u32,
@@ -374,7 +374,7 @@ pub struct fuse_getattr_in {
 pub const FUSE_COMPAT_ATTR_OUT_SIZE: u32 = 96;
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_attr_out {
     pub attr_valid: u64, /* Cache timeout for the attributes */
     pub attr_valid_nsec: u32,
@@ -385,7 +385,7 @@ pub struct fuse_attr_out {
 pub const FUSE_COMPAT_MKNOD_IN_SIZE: u32 = 8;
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_mknod_in {
     pub mode: u32,
     pub rdev: u32,
@@ -394,20 +394,20 @@ pub struct fuse_mknod_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_mkdir_in {
     pub mode: u32,
     pub umask: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_rename_in {
     pub newdir: u64,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_rename2_in {
     pub newdir: u64,
     pub flags: u32,
@@ -415,13 +415,13 @@ pub struct fuse_rename2_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_link_in {
     pub oldnodeid: u64,
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Clone, Copy, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_setattr_in {
     pub valid: u32,
     pub padding: u32,
@@ -442,14 +442,14 @@ pub struct fuse_setattr_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_open_in {
     pub flags: u32,
     pub unused: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_create_in {
     pub flags: u32,
     pub mode: u32,
@@ -458,7 +458,7 @@ pub struct fuse_create_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_open_out {
     pub fh: u64,
     pub open_flags: u32,
@@ -466,7 +466,7 @@ pub struct fuse_open_out {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_release_in {
     pub fh: u64,
     pub flags: u32,
@@ -475,7 +475,7 @@ pub struct fuse_release_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_flush_in {
     pub fh: u64,
     pub unused: u32,
@@ -484,7 +484,7 @@ pub struct fuse_flush_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_read_in {
     pub fh: u64,
     pub offset: u64,
@@ -498,7 +498,7 @@ pub struct fuse_read_in {
 pub const FUSE_COMPAT_WRITE_IN_SIZE: u32 = 24;
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_write_in {
     pub fh: u64,
     pub offset: u64,
@@ -510,7 +510,7 @@ pub struct fuse_write_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_write_out {
     pub size: u32,
     pub padding: u32,
@@ -519,13 +519,13 @@ pub struct fuse_write_out {
 pub const FUSE_COMPAT_STATFS_SIZE: u32 = 48;
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_statfs_out {
     pub st: fuse_kstatfs,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_fsync_in {
     pub fh: u64,
     pub fsync_flags: u32,
@@ -533,28 +533,28 @@ pub struct fuse_fsync_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_setxattr_in {
     pub size: u32,
     pub flags: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_getxattr_in {
     pub size: u32,
     pub padding: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_getxattr_out {
     pub size: u32,
     pub padding: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_lk_in {
     pub fh: u64,
     pub owner: u64,
@@ -564,20 +564,20 @@ pub struct fuse_lk_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_lk_out {
     pub lk: fuse_file_lock,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_access_in {
     pub mask: u32,
     pub padding: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_init_in {
     pub major: u32,
     pub minor: u32,
@@ -589,7 +589,7 @@ pub const FUSE_COMPAT_INIT_OUT_SIZE: u32 = 8;
 pub const FUSE_COMPAT_22_INIT_OUT_SIZE: u32 = 24;
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_init_out {
     pub major: u32,
     pub minor: u32,
@@ -607,7 +607,7 @@ pub struct fuse_init_out {
 pub const CUSE_INIT_INFO_MAX: u32 = 4096;
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct cuse_init_in {
     pub major: u32,
     pub minor: u32,
@@ -616,7 +616,7 @@ pub struct cuse_init_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct cuse_init_out {
     pub major: u32,
     pub minor: u32,
@@ -630,13 +630,13 @@ pub struct cuse_init_out {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_interrupt_in {
     pub unique: u64,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_bmap_in {
     pub block: u64,
     pub blocksize: u32,
@@ -644,13 +644,13 @@ pub struct fuse_bmap_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_bmap_out {
     pub block: u64,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_ioctl_in {
     pub fh: u64,
     pub flags: u32,
@@ -661,14 +661,14 @@ pub struct fuse_ioctl_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_ioctl_iovec {
     pub base: u64,
     pub len: u64,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_ioctl_out {
     pub result: i32,
     pub flags: u32,
@@ -677,7 +677,7 @@ pub struct fuse_ioctl_out {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_poll_in {
     pub fh: u64,
     pub kh: u64,
@@ -686,20 +686,20 @@ pub struct fuse_poll_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_poll_out {
     pub revents: u32,
     pub padding: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_notify_poll_wakeup_out {
     pub kh: u64,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_fallocate_in {
     pub fh: u64,
     pub offset: u64,
@@ -709,7 +709,7 @@ pub struct fuse_fallocate_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_in_header {
     pub len: u32,
     pub opcode: u32,
@@ -722,7 +722,7 @@ pub struct fuse_in_header {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_out_header {
     pub len: u32,
     pub error: i32,
@@ -730,7 +730,7 @@ pub struct fuse_out_header {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_dirent {
     pub ino: u64,
     pub off: u64,
@@ -743,14 +743,14 @@ pub fn fuse_dirent_align(x: usize) -> usize {
     (((x) + size_of::<u64>() - 1) & !(size_of::<u64>() - 1))
 }
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_direntplus {
     pub entry_out: fuse_entry_out,
     pub dirent: fuse_dirent,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_notify_inval_inode_out {
     pub ino: u64,
     pub off: i64,
@@ -758,7 +758,7 @@ pub struct fuse_notify_inval_inode_out {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_notify_inval_entry_out {
     pub parent: u64,
     pub namelen: u32,
@@ -766,7 +766,7 @@ pub struct fuse_notify_inval_entry_out {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_notify_delete_out {
     pub parent: u64,
     pub child: u64,
@@ -775,7 +775,7 @@ pub struct fuse_notify_delete_out {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_notify_store_out {
     pub nodeid: u64,
     pub offset: u64,
@@ -784,7 +784,7 @@ pub struct fuse_notify_store_out {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_notify_retrieve_out {
     pub notify_unique: u64,
     pub nodeid: u64,
@@ -795,7 +795,7 @@ pub struct fuse_notify_retrieve_out {
 
 /* Matches the size of fuse_write_in */
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_notify_retrieve_in {
     pub dummy1: u64,
     pub offset: u64,
@@ -809,7 +809,7 @@ pub struct fuse_notify_retrieve_in {
 //  const FUSE_DEV_IOC_CLONE: u32 = _IOR(229, 0, u32);
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_lseek_in {
     pub fh: u64,
     pub offset: u64,
@@ -818,13 +818,13 @@ pub struct fuse_lseek_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_lseek_out {
     pub offset: u64,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_copy_file_range_in {
     pub fh_in: u64,
     pub off_in: u64,
@@ -838,7 +838,7 @@ pub struct fuse_copy_file_range_in {
 pub const FUSE_SETUPMAPPING_FLAG_WRITE: u64 = (1 << 0);
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_setupmapping_in {
     /* An already open handle */
     pub fh: u64,
@@ -853,14 +853,14 @@ pub struct fuse_setupmapping_in {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_removemapping_in {
     /* number of fuse_removemapping_one follows */
     pub count: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_removemapping_one {
     /* Offset into the dax to start the unmapping */
     pub moffset: u64,
@@ -869,7 +869,7 @@ pub struct fuse_removemapping_one {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct fuse_syncfs_in {
     pub padding: u64,
 }

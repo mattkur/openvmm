@@ -14,9 +14,12 @@ use openhcl_attestation_protocol::vmgs::GUEST_SECRET_KEY_MAX_SIZE;
 use thiserror::Error;
 use vmgs::FileId;
 use vmgs::Vmgs;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 #[derive(Debug, Error)]
 pub(crate) enum ReadFromVmgsError {
@@ -134,7 +137,7 @@ pub async fn read_key_protector_by_id(
 
                 Ok(KeyProtectorById {
                     id_guid,
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 })
             }
         },

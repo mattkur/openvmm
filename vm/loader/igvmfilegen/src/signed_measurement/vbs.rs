@@ -25,7 +25,10 @@ use vbs_defs::VBS_VM_GPA_PAGE_BOOT_METADATA;
 use vbs_defs::VBS_VP_CHUNK_SIZE_BYTES;
 use vbs_defs::VM_GPA_PAGE_READABLE;
 use vbs_defs::VM_GPA_PAGE_WRITABLE;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 #[derive(Debug, Error)]
 pub enum Error {

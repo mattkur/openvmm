@@ -33,7 +33,10 @@ use vmbus_channel::gpadl_ring::GpadlRingMem;
 use vmbus_channel::simple::SaveRestoreSimpleVmbusDevice;
 use vmbus_channel::simple::SimpleVmbusDevice;
 use vmcore::save_restore::SavedStateNotSupported;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 /// The crash device.
@@ -59,7 +62,7 @@ struct GuestCrashPipe {
 }
 
 impl GuestCrashPipe {
-    fn send<T: AsBytes>(&mut self, data: &T) -> std::io::Result<()> {
+    fn send<T: IntoBytes>(&mut self, data: &T) -> std::io::Result<()> {
         self.pipe.try_send(data.as_bytes())
     }
 

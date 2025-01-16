@@ -1436,7 +1436,7 @@ impl<T> DescribeField<T> for ZeroCopyEncoding {
 #[error("invalid byte size for type")]
 struct InvalidZeroCopySize;
 
-impl<T: zerocopy::AsBytes, R> FieldEncode<T, R> for ZeroCopyEncoding {
+impl<T: zerocopy::IntoBytes + zerocopy::Immutable, R> FieldEncode<T, R> for ZeroCopyEncoding {
     fn write_field(item: T, writer: FieldWriter<'_, '_, R>) {
         writer.bytes(item.as_bytes());
     }

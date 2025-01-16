@@ -2,15 +2,18 @@
 // Licensed under the MIT License.
 
 use guid::Guid;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// UEFI spec 32.2.4
 ///
 /// This structure is the certificate header.
 /// There may be zero or more certificates.
-#[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+#[derive(Debug, FromBytes, IntoBytes)]
 #[repr(C)]
 pub struct WIN_CERTIFICATE {
     /// The length of the entire certificate, including the length of the header,
@@ -30,7 +33,7 @@ pub struct WIN_CERTIFICATE {
 }
 
 /// UEFI spec 32.2.4 - WIN_CERTIFICATE_UEFI_GUID
-#[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+#[derive(Debug, FromBytes, IntoBytes)]
 #[repr(C)]
 pub struct WIN_CERTIFICATE_UEFI_GUID {
     /// certificate_type is set to WIN_CERT_TYPE_EFI_GUID.

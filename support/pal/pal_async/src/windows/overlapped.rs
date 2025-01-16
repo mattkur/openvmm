@@ -26,7 +26,10 @@ use winapi::um::fileapi::WriteFile;
 use winapi::um::ioapiset::CancelIoEx;
 use winapi::um::ioapiset::DeviceIoControl;
 use winapi::um::minwinbase::OVERLAPPED;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 /// Driver methods for supporting overlapped files.
@@ -360,7 +363,7 @@ unsafe impl IoBufMut for () {
     }
 }
 
-unsafe impl<T: AsBytes> IoBuf for &'static [T] {
+unsafe impl<T: IntoBytes> IoBuf for &'static [T] {
     fn as_ptr(&self) -> *const u8 {
         self.as_bytes().as_ptr()
     }
@@ -370,7 +373,7 @@ unsafe impl<T: AsBytes> IoBuf for &'static [T] {
     }
 }
 
-unsafe impl<T: AsBytes> IoBuf for Vec<T> {
+unsafe impl<T: IntoBytes> IoBuf for Vec<T> {
     fn as_ptr(&self) -> *const u8 {
         self.as_bytes().as_ptr()
     }
@@ -380,7 +383,7 @@ unsafe impl<T: AsBytes> IoBuf for Vec<T> {
     }
 }
 
-unsafe impl<T: AsBytes + FromBytes> IoBufMut for Vec<T> {
+unsafe impl<T: zerocopy::KnownLayout + zerocopy::IntoBytes> IoBufMut for Vec<T> {
     fn as_mut_ptr(&mut self) -> *mut u8 {
         self.as_bytes_mut().as_mut_ptr()
     }

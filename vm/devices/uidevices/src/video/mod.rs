@@ -27,8 +27,11 @@ use vmbus_channel::simple::SaveRestoreSimpleVmbusDevice;
 use vmbus_channel::simple::SimpleVmbusDevice;
 use vmbus_channel::RawAsyncChannel;
 use vmcore::save_restore::SavedStateRoot;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
 use zerocopy::FromBytes;
+use zerocopy::Immutable;
 use zerocopy::Ref;
 
 #[derive(Debug, Error)]
@@ -74,7 +77,7 @@ enum Request {
 
 fn parse_packet(buf: &[u8]) -> Result<Request, Error> {
     let (header, buf) =
-        Ref::<_, protocol::MessageHeader>::new_from_prefix(buf).ok_or(Error::InvalidPacket)?;
+        Ref::<_, protocol::MessageHeader>::from_prefix(buf).ok_or(Error::InvalidPacket)?;
     let request = match header.typ.to_ne() {
         protocol::MESSAGE_VERSION_REQUEST => {
             let message = protocol::VersionRequestMessage::ref_from_prefix(buf)
@@ -116,8 +119,8 @@ fn parse_packet(buf: &[u8]) -> Result<Request, Error> {
             Request::PointerShape
         }
         protocol::MESSAGE_DIRT => {
-            let (message, buf) = Ref::<_, protocol::DirtMessage>::new_from_prefix(buf)
-                .ok_or(Error::InvalidPacket)?;
+            let (message, buf) =
+                Ref::<_, protocol::DirtMessage>::from_prefix(buf).ok_or(Error::InvalidPacket)?;
             Request::Dirt(
                 protocol::Rectangle::slice_from_prefix(buf, message.dirt_count as usize)
                     .ok_or(Error::InvalidPacket)?
@@ -373,7 +376,7 @@ impl VideoChannel {
         }
     }
 
-    async fn send_packet<T: AsBytes + ?Sized>(
+    async fn send_packet<T: IntoBytes + ?Sized>(
         writer: &mut (impl AsyncSend + Unpin),
         typ: u32,
         packet: &T,

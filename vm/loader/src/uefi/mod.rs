@@ -18,9 +18,12 @@ pub use arch::IMAGE_SIZE;
 
 use guid::Guid;
 use thiserror::Error;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 // Constant defining the offset within the image where the SEC volume starts.
 // TODO: Revisit this when we reorganize the firmware layout. One option
@@ -47,7 +50,7 @@ const TE_IMAGE_HEADER_SIGNATURE: u16 = signature_16(b"VZ");
 const EFI_FVH_SIGNATURE: u32 = signature_32(b"_FVH");
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct ImageDosHeader {
     e_magic: u16,      // Magic number
     e_cblp: u16,       // Bytes on last page of file
@@ -71,7 +74,7 @@ struct ImageDosHeader {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct TeImageHeader {
     signature: u16,
     machine: u16,
@@ -85,7 +88,7 @@ struct TeImageHeader {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct ImageNtHeaders32 {
     signature: u32,
     file_header: ImageFileHeader,
@@ -93,7 +96,7 @@ struct ImageNtHeaders32 {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct ImageFileHeader {
     machine: u16,
     number_of_sections: u16,
@@ -105,7 +108,7 @@ struct ImageFileHeader {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct ImageOptionalHeader32 {
     magic: u16,
     major_linker_version: u8,
@@ -141,7 +144,7 @@ struct ImageOptionalHeader32 {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct ImageDataDirectory {
     virtual_address: u32,
     size: u32,
@@ -173,7 +176,7 @@ fn pe_get_entry_point_offset(pe32_data: &[u8]) -> Option<u32> {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct EFI_FIRMWARE_VOLUME_HEADER {
     zero_vector: [u8; 16],
     file_system_guid: Guid,
@@ -188,7 +191,7 @@ struct EFI_FIRMWARE_VOLUME_HEADER {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct EFI_FFS_FILE_HEADER {
     name: Guid,
     integrity_check: u16,
@@ -201,7 +204,7 @@ struct EFI_FFS_FILE_HEADER {
 const EFI_FV_FILETYPE_SECURITY_CORE: u8 = 3;
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct EFI_COMMON_SECTION_HEADER {
     size: [u8; 3],
     typ: u8,
@@ -281,13 +284,16 @@ fn get_sec_entry_point_offset(image: &[u8]) -> Option<u64> {
 
 /// Definitions shared by UEFI and the loader when loaded with parameters passed in IGVM format.
 mod igvm {
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
     use zerocopy::FromBytes;
-    use zerocopy::FromZeroes;
+    
 
     /// The structure used to tell UEFI where the IGVM loaded parameters are.
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct UEFI_IGVM_PARAMETER_INFO {
         pub parameter_page_count: u32,
         pub cpuid_pages_offset: u32,
@@ -360,8 +366,11 @@ pub mod x86_64 {
     use page_table::x64::align_up_to_page_size;
     use page_table::x64::build_page_tables_64;
     use page_table::IdentityMapSize;
-    use zerocopy::AsBytes;
-    use zerocopy::FromZeroes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+    
 
     pub const IMAGE_SIZE: u64 = 0x00600000; // 6 MB. See MsvmPkg\MsvmPkgX64.fdf
     const IMAGE_GPA_BASE: u64 = 0x100000; // 1MB
@@ -841,7 +850,10 @@ pub mod aarch64 {
     use crate::importer::ImageLoad;
     use aarch64defs::Cpsr64;
     use hvdef::HV_PAGE_SIZE;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
     pub const IMAGE_SIZE: u64 = 0x800000;
     pub const CONFIG_BLOB_GPA_BASE: u64 = 0x824000;

@@ -44,7 +44,10 @@ use vmbus_async::async_dgram::AsyncRecvExt;
 use vmbus_async::async_dgram::AsyncSend;
 use vmbus_async::async_dgram::AsyncSendExt;
 use vmbus_serial_protocol as protocol;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 /// Configuration for an open vmbus serial port resource.
@@ -454,7 +457,10 @@ mod tests {
     use vmbus_serial_host::Serial;
     use vmbus_serial_host::SerialChannel;
     use vmbus_serial_protocol::*;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
     #[async_test]
     async fn test_version_negotiation_failed(driver: DefaultDriver) {

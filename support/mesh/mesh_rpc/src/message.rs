@@ -12,15 +12,18 @@ use futures::AsyncWriteExt;
 use mesh::payload::Protobuf;
 use std::io::ErrorKind;
 use thiserror::Error;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::BigEndian;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 use zerocopy::U32;
 
 /// The wire format header for a message.
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 struct MessageHeader {
     length: U32<BigEndian>,
     stream_id: U32<BigEndian>,

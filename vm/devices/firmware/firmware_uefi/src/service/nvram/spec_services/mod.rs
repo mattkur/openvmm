@@ -30,7 +30,7 @@ use uefi_specs::uefi::common::EfiStatus;
 use uefi_specs::uefi::nvram::EfiVariableAttributes;
 use uefi_specs::uefi::time::EFI_TIME;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 #[cfg(feature = "fuzzing")]
 pub mod auth_var_crypto;
@@ -1507,7 +1507,10 @@ mod test {
     // represented in UCS-2).
     use pal_async::async_test;
     use wchar::wchz;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
     /// Extension trait around `NvramServices` that makes it easier to use the
     /// API outside the context of the UEFI device

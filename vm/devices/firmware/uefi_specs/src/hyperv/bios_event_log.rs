@@ -5,9 +5,12 @@
 
 use guid::Guid;
 use static_assertions::const_assert_eq;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// Represents an event channel plus data.
 ///
@@ -16,7 +19,7 @@ use zerocopy::FromZeroes;
 ///
 /// reSearch query: `BIOS_EVENT_CHANNEL`
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct BiosEventChannel {
     pub channel: Guid,
     pub events_written: u32,
@@ -27,7 +30,7 @@ pub struct BiosEventChannel {
 
 /// reSearch query: `EFI_EVENT_DESCRIPTOR`
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct EfiEventDescriptor {
     pub producer: Guid,       // Optional GUID identifying the producer of the event
     pub correlation_id: Guid, // Optional Guid used to correlate an event entry with another event entry

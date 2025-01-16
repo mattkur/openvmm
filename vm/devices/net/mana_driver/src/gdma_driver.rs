@@ -80,9 +80,12 @@ use user_driver::memory::PAGE_SIZE64;
 use user_driver::DeviceBacking;
 use user_driver::DeviceRegisterIo;
 use user_driver::HostDmaAllocator;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 const HWC_WARNING_TIME_IN_MS: u32 = 3000;
 const HWC_TIMEOUT_DEFAULT_IN_MS: u32 = 10000;
@@ -618,7 +621,7 @@ impl<T: DeviceBacking> GdmaDriver<T> {
         self.rq.commit();
     }
 
-    pub async fn request_version<Req: AsBytes, Resp: AsBytes + FromBytes>(
+    pub async fn request_version<Req: IntoBytes, Immutable, Resp: zerocopy::KnownLayout + zerocopy::IntoBytes>(
         &mut self,
         req_msg_type: u32,
         req_msg_version: u16,
@@ -663,7 +666,7 @@ impl<T: DeviceBacking> GdmaDriver<T> {
         let oob = HwcTxOob {
             flags3: HwcTxOobFlags3::new().with_vscq_id(self.cq.id()),
             flags4: HwcTxOobFlags4::new().with_vsq_id(self.sq.id()),
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
 
         let hw_access = async {
@@ -743,7 +746,7 @@ impl<T: DeviceBacking> GdmaDriver<T> {
         Ok((resp, self.hwc_activity_id))
     }
 
-    pub async fn request<Req: AsBytes, Resp: AsBytes + FromBytes>(
+    pub async fn request<Req: IntoBytes, Immutable, Resp: zerocopy::KnownLayout + zerocopy::IntoBytes>(
         &mut self,
         msg_type: u32,
         dev_id: GdmaDevId,
@@ -943,7 +946,7 @@ impl<T: DeviceBacking> GdmaDriver<T> {
                     gd_drv_cap_flags1: DRIVER_CAP_FLAG_1_VARIABLE_INDIRECTION_TABLE_SUPPORT
                         | DRIVER_CAP_FLAG_1_HW_VPORT_LINK_AWARE
                         | DRIVER_CAP_FLAG_1_HWC_TIMEOUT_RECONFIG,
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 },
             )
             .await?;
@@ -1069,7 +1072,7 @@ impl<T: DeviceBacking> GdmaDriver<T> {
                     gdma_region,
                     queue_size,
                     eq_pci_msix_index: msix,
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 },
             )
             .await?;
@@ -1109,7 +1112,7 @@ impl<T: DeviceBacking> GdmaDriver<T> {
         mem: MemoryBlock,
     ) -> anyhow::Result<u64> {
         #[repr(C)]
-        #[derive(AsBytes)]
+        #[derive(IntoBytes)]
         struct Req {
             req: GdmaCreateDmaRegionReq,
             pages: [u64; 16],

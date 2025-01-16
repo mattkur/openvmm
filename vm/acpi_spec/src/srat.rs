@@ -8,14 +8,17 @@ use super::Table;
 use crate::packed_nums::*;
 use core::mem::size_of;
 use static_assertions::const_assert_eq;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+
 use zerocopy::Ref;
 use zerocopy::Unaligned;
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, Unaligned, KnownLayout)]
 pub struct SratHeader {
     pub rsvd1: u32_ne,
     pub rsvd2: u64_ne,
@@ -37,7 +40,7 @@ impl Table for SratHeader {
 pub const SRAT_REVISION: u8 = 3;
 
 open_enum::open_enum! {
-    #[derive(AsBytes, FromBytes, FromZeroes, Unaligned)]
+    #[derive(IntoBytes, Immutable, FromBytes, Unaligned)]
     pub enum SratType: u8 {
         APIC = 0,
         MEMORY = 1,
@@ -47,7 +50,7 @@ open_enum::open_enum! {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, Unaligned, KnownLayout)]
 pub struct SratApic {
     pub typ: SratType,
     pub length: u8,
@@ -84,7 +87,7 @@ impl SratApic {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, Unaligned)]
 pub struct SratX2Apic {
     pub typ: SratType,
     pub length: u8,
@@ -114,7 +117,7 @@ impl SratX2Apic {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, Unaligned)]
 pub struct SratGicc {
     pub typ: SratType,
     pub length: u8,
@@ -140,7 +143,7 @@ impl SratGicc {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Copy, Clone, IntoBytes, Immutable, FromBytes, Unaligned, KnownLayout)]
 pub struct SratMemory {
     pub typ: SratType,
     pub length: u8,
@@ -240,7 +243,7 @@ pub fn parse_srat<'a>(
     mut on_memory: impl FnMut(&'a SratMemory),
 ) -> Result<(&'a crate::Header, &'a SratHeader), ParseSratError> {
     let raw_srat_len = raw_srat.len();
-    let (acpi_header, buf) = Ref::<_, crate::Header>::new_from_prefix(raw_srat)
+    let (acpi_header, buf) = Ref::<_, crate::Header>::from_prefix(raw_srat)
         .ok_or(ParseSratError::MissingAcpiHeader)?;
 
     if acpi_header.signature != *b"SRAT" {
@@ -255,19 +258,19 @@ pub fn parse_srat<'a>(
     }
 
     let (srat_header, mut buf) =
-        Ref::<_, SratHeader>::new_from_prefix(buf).ok_or(ParseSratError::MissingFixedHeader)?;
+        Ref::<_, SratHeader>::from_prefix(buf).ok_or(ParseSratError::MissingFixedHeader)?;
 
     while !buf.is_empty() {
         buf = match SratType(buf[0]) {
             SratType::APIC => {
                 let (apic, rest) =
-                    Ref::<_, SratApic>::new_from_prefix(buf).ok_or(ParseSratError::BadApic)?;
+                    Ref::<_, SratApic>::from_prefix(buf).ok_or(ParseSratError::BadApic)?;
                 on_apic(apic.into_ref());
                 rest
             }
             SratType::MEMORY => {
                 let (mem, rest) =
-                    Ref::<_, SratMemory>::new_from_prefix(buf).ok_or(ParseSratError::BadMemory)?;
+                    Ref::<_, SratMemory>::from_prefix(buf).ok_or(ParseSratError::BadMemory)?;
                 on_memory(mem.into_ref());
                 rest
             }

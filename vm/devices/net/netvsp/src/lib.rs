@@ -104,9 +104,12 @@ use vmcore::save_restore::SaveError;
 use vmcore::save_restore::SavedStateBlob;
 use vmcore::vm_task::VmTaskDriver;
 use vmcore::vm_task::VmTaskDriverSource;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 // The minimum ring space required to handle a control message. Most control messages only need to send a completion
 // packet, but also need room for an additional SEND_VF_ASSOCIATION message.
@@ -732,7 +735,7 @@ impl OffloadConfig {
             },
             checksum,
             lso_v2,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         }
     }
 }
@@ -1928,7 +1931,7 @@ impl Packet<'_> {
     }
 }
 
-fn read_packet_data<T: AsBytes + FromBytes>(
+fn read_packet_data<T: zerocopy::KnownLayout + zerocopy::IntoBytes>(
     reader: &mut impl MemoryRead,
 ) -> Result<T, PacketError> {
     reader.read_plain().map_err(PacketError::Access)
@@ -2033,14 +2036,14 @@ struct NvspMessage<T> {
     padding: &'static [u8],
 }
 
-impl<T: AsBytes> NvspMessage<T> {
+impl<T: IntoBytes> NvspMessage<T> {
     fn payload(&self) -> [&[u8]; 3] {
         [self.header.as_bytes(), self.data.as_bytes(), self.padding]
     }
 }
 
 impl<T: RingMem> NetChannel<T> {
-    fn message<P: AsBytes>(&self, message_type: u32, data: P) -> NvspMessage<P> {
+    fn message<P: IntoBytes>(&self, message_type: u32, data: P) -> NvspMessage<P> {
         let padding = self.padding(&data);
         NvspMessage {
             header: protocol::MessageHeader { message_type },
@@ -2051,7 +2054,7 @@ impl<T: RingMem> NetChannel<T> {
 
     /// Returns zero padding bytes to round the payload up to the packet size.
     /// Only needed for Windows guests, which are picky about packet sizes.
-    fn padding<P: AsBytes>(&self, data: &P) -> &'static [u8] {
+    fn padding<P: IntoBytes>(&self, data: &P) -> &'static [u8] {
         static PADDING: &[u8] = &[0; protocol::PACKET_SIZE_V61];
         let padding_len = self.packet_size
             - cmp::min(
@@ -2455,7 +2458,7 @@ impl<T: RingMem> NetChannel<T> {
         }
 
         #[repr(C)]
-        #[derive(AsBytes)]
+        #[derive(IntoBytes)]
         struct SendIndirectionMsg {
             pub message: protocol::Message5SendIndirectionTable,
             pub send_indirection_table:
@@ -2936,7 +2939,7 @@ impl<T: RingMem> NetChannel<T> {
 }
 
 /// Writes an RNDIS message to `writer`.
-fn write_rndis_message<T: AsBytes>(
+fn write_rndis_message<T: IntoBytes>(
     writer: &mut impl MemoryWrite,
     message_type: u32,
     extra: usize,
@@ -3502,7 +3505,7 @@ impl Adapter {
     }
 }
 
-fn read_ndis_object<T: AsBytes + FromBytes + Debug>(
+fn read_ndis_object<T: zerocopy::KnownLayout + zerocopy::IntoBytes + Debug>(
     mut reader: impl MemoryRead,
     object_type: rndisprot::NdisObjectType,
     min_revision: u8,

@@ -41,9 +41,11 @@ use vmbus_async::async_dgram::AsyncSendExt;
 use vmbus_async::pipe::MessagePipe;
 use vmbus_ring::RingMem;
 use vpci::bus_control::VpciBusEvent;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 use zerocopy_helpers::FromBytesExt;
 
 /// Error type for GET errors
@@ -602,7 +604,7 @@ impl HostRequestPipeAccess {
     /// Waits for a known, fixed-size response message from the host.
     ///
     /// The caller is responsible for validating the message ID.
-    async fn recv_response_fixed_size<T: AsBytes + FromBytes>(
+    async fn recv_response_fixed_size<T: zerocopy::KnownLayout + zerocopy::IntoBytes>(
         &mut self,
         id: HostRequests,
     ) -> Result<T, FatalError> {
@@ -619,7 +621,11 @@ impl HostRequestPipeAccess {
     ///
     /// Fails if the response's message ID does not match the request's message
     /// ID.
-    async fn send_request_fixed_size<T: AsBytes + ?Sized, U: AsBytes + FromBytes>(
+    async fn send_request_fixed_size<
+        T: IntoBytes + ?Sized,
+        U: zerocopy::KnownLayout + zerocopy::IntoBytes,
+        Immutable,
+    >(
         &mut self,
         data: &T,
     ) -> Result<U, FatalError> {
@@ -968,9 +974,9 @@ impl<T: RingMem> ProcessLoop<T> {
         req: Rpc<I, Resp>,
         f: impl 'static + Send + FnOnce(I) -> Req,
     ) where
-        Req: AsBytes + 'static + Send + Sync,
+        Req: IntoBytes + 'static + Send + Sync,
         I: 'static + Send,
-        Resp: 'static + AsBytes + FromBytes + Send,
+        Resp: 'static + zerocopy::KnownLayout + zerocopy::IntoBytes + Send,
     {
         self.push_host_request_handler(|mut access| {
             req.handle_must_succeed(move |input| async move {

@@ -43,7 +43,10 @@ use vmbus_proxy::ProxyAction;
 use vmbus_proxy::VmbusProxy;
 use vmcore::interrupt::Interrupt;
 use winapi::shared::winerror::ERROR_CANCELLED;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 pub struct ProxyIntegration {
     cancel: Cancel,

@@ -32,9 +32,12 @@ use vmbus_channel::gpadl_ring::GpadlRingMem;
 use vmbus_channel::simple::SaveRestoreSimpleVmbusDevice;
 use vmbus_channel::simple::SimpleVmbusDevice;
 use vmbus_channel::RawAsyncChannel;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 use zerocopy_helpers::FromBytesExt;
 
 /// A shutdown IC device.
@@ -178,7 +181,7 @@ impl ShutdownChannel {
                 let message = hyperv_ic_protocol::NegotiateMessage {
                     framework_version_count: FRAMEWORK_VERSIONS.len() as u16,
                     message_version_count: message_versions.len() as u16,
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 };
 
                 let header = hyperv_ic_protocol::Header {
@@ -191,7 +194,7 @@ impl ShutdownChannel {
                     flags: hyperv_ic_protocol::HeaderFlags::new()
                         .with_transaction(true)
                         .with_request(true),
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 };
 
                 self.pipe
@@ -258,7 +261,7 @@ impl ShutdownChannel {
                         flags: hyperv_ic_protocol::HeaderFlags::new()
                             .with_transaction(true)
                             .with_request(true),
-                        ..FromZeroes::new_zeroed()
+                        ..FromZeros::new_zeroed()
                     };
 
                     self.pipe

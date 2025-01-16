@@ -21,7 +21,10 @@ use x86defs::SegmentRegister;
 use x86emu::Gp;
 use x86emu::RegisterIndex;
 use x86emu::Segment;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 /// Support routines for the emulator.

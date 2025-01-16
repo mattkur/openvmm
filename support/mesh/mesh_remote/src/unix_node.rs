@@ -66,9 +66,12 @@ use std::sync::Arc;
 use thiserror::Error;
 use tracing::instrument;
 use unicycle::FuturesUnordered;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// If true, use a SOCK_SEQPACKET socket. Otherwise, use a SOCK_STREAM socket.
 ///
@@ -468,7 +471,7 @@ fn serialize_event(event: OutgoingEvent<'_>) -> io::Result<(Vec<u8>, Vec<OsResou
 fn serialize_large_event(event: OutgoingEvent<'_>) -> io::Result<(Vec<u8>, Vec<OsResource>)> {
     let packet = protocol::PacketHeader {
         packet_type: protocol::PacketType::LARGE_EVENT,
-        ..FromZeroes::new_zeroed()
+        ..FromZeros::new_zeroed()
     }
     .as_bytes()
     .to_vec();
@@ -631,7 +634,7 @@ async fn run_receive(
                 packet: protocol::ReleaseFds {
                     header: protocol::PacketHeader {
                         packet_type: protocol::PacketType::RELEASE_FDS,
-                        ..FromZeroes::new_zeroed()
+                        ..FromZeros::new_zeroed()
                     },
                     count: fds.len() as u64,
                 }

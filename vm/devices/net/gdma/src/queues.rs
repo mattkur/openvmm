@@ -31,8 +31,11 @@ use std::task::Waker;
 use thiserror::Error;
 use vmcore::interrupt::Interrupt;
 use vmcore::vm_task::VmTaskDriver;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 // Offset the queue IDs seen by the guest.
 const ID_OFFSET: usize = 24;
@@ -65,7 +68,7 @@ pub enum QueueAllocError {
     NoMoreQueues,
 }
 
-impl<T: AsBytes> CqEq<T> {
+impl<T: IntoBytes> CqEq<T> {
     fn new(region: DmaRegion) -> Result<Self, QueueAllocError> {
         if !region.is_aligned_to(size_of::<T>()) {
             return Err(QueueAllocError::InvalidAlignment);
@@ -229,7 +232,7 @@ impl Wq {
 
         let mut wqe = Wqe {
             header,
-            data: FromZeroes::new_zeroed(),
+            data: FromZeros::new_zeroed(),
         };
 
         if let Err(err) = reader.read(&mut wqe.data[..wqe.header.data_len()]) {
@@ -453,7 +456,7 @@ impl Queues {
     pub fn post_cq(&self, cq_id: u32, data: &[u8], wq_id: u32, is_send: bool) {
         let post_to_eq = self.cq(cq_id).and_then(|mut cq| {
             let mut cqe = Cqe {
-                data: FromZeroes::new_zeroed(),
+                data: FromZeros::new_zeroed(),
                 params: CqeParams::new()
                     .with_is_send_wq(is_send)
                     .with_wq_number(wq_id)
@@ -472,7 +475,7 @@ impl Queues {
     pub fn post_eq(&self, eq_id: u32, ty: u8, data: &[u8]) {
         let post_msi = self.eq(eq_id).and_then(|mut eq| {
             let mut eqe = Eqe {
-                data: FromZeroes::new_zeroed(),
+                data: FromZeros::new_zeroed(),
                 params: EqeParams::new()
                     .with_event_type(ty)
                     .with_owner_count(eq.q.owner_count()),

@@ -6,7 +6,7 @@ macro_rules! vmbus_message_type {
     (pub enum $enum_name:ident, $open_enum_name:ident { $( $num:literal $name:ident $rest:tt, )* }) => {
         open_enum! {
             /// Represents the message type value that identifies a vmbus protocol message.
-            #[derive(AsBytes, FromBytes, FromZeroes)]
+            #[derive(IntoBytes, Immutable, FromBytes)]
             pub enum $open_enum_name: u32 {
                 $($name = $num,)*
             }

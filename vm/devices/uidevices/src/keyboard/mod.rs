@@ -27,7 +27,10 @@ use vmbus_channel::simple::SimpleVmbusDevice;
 use vmbus_channel::RawAsyncChannel;
 use vmbus_ring::RingMem;
 use vmcore::save_restore::SavedStateRoot;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 use zerocopy_helpers::FromBytesExt;
 
@@ -74,7 +77,7 @@ async fn recv_packet(reader: &mut impl AsyncRecv) -> Result<Request, Error> {
     Ok(request)
 }
 
-async fn send_packet<T: AsBytes>(
+async fn send_packet<T: IntoBytes>(
     writer: &mut impl AsyncSend,
     typ: u32,
     packet: &T,

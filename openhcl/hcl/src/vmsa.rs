@@ -13,8 +13,11 @@ use x86defs::snp::SevSelector;
 use x86defs::snp::SevVirtualInterruptControl;
 use x86defs::snp::SevVmsa;
 use x86defs::snp::SevXmmRegister;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 /// VMSA and register tweak bitmap.
 pub struct VmsaWrapper<'a, T> {
@@ -98,7 +101,7 @@ impl<T: DerefMut<Target = SevVmsa>> VmsaWrapper<'_, T> {
 
     /// Create a new VMSA
     pub fn reset(&mut self, vmsa_reg_prot: bool) {
-        *self.vmsa = FromZeroes::new_zeroed();
+        *self.vmsa = FromZeros::new_zeroed();
         if vmsa_reg_prot {
             // Initialize nonce and all protected fields.
             getrandom::getrandom(self.vmsa.register_protection_nonce.as_bytes_mut())
@@ -338,7 +341,7 @@ mod tests {
     fn test_reg_access() {
         let nonce = 0xffff_ffff_ffff_ffffu64;
         let nonce128 = ((nonce as u128) << 64) | nonce as u128;
-        let mut vmsa: SevVmsa = FromZeroes::new_zeroed();
+        let mut vmsa: SevVmsa = FromZeros::new_zeroed();
         vmsa.register_protection_nonce = nonce;
         let bitmap = [0xffu8; 64];
         let mut vmsa_wrapper = VmsaWrapper {
@@ -387,7 +390,7 @@ mod tests {
 
     #[test]
     fn test_init() {
-        let mut vmsa: SevVmsa = FromZeroes::new_zeroed();
+        let mut vmsa: SevVmsa = FromZeros::new_zeroed();
         let mut bitmap = [0x0u8; 64];
         let xmm_idx = 1;
         bitmap[5] = 0x80u8; // rip

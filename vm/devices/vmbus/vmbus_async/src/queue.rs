@@ -34,9 +34,12 @@ use vmbus_ring::FlatRingMem;
 use vmbus_ring::IncomingPacketType;
 use vmbus_ring::IncomingRing;
 use vmbus_ring::RingMem;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// A queue error.
 #[derive(Debug, Error)]
@@ -256,7 +259,7 @@ impl<T: RingMem> DataPacket<'_, T> {
             return Err(AccessError::OutOfRange(0, 0));
         }
 
-        let mut buf: GpnList = smallvec![FromZeroes::new_zeroed(); len];
+        let mut buf: GpnList = smallvec![FromZeros::new_zeroed(); len];
         reader.read(buf.as_bytes_mut())?;
 
         // Construct an array of the form [#1 offset/length][page1][page2][...][#2 offset/length][page1][page2]...

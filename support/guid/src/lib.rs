@@ -8,13 +8,16 @@
 
 use std::str::FromStr;
 use thiserror::Error;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// Windows format GUID.
 #[repr(C)]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, IntoBytes, Immutable, FromBytes)]
 #[cfg_attr(
     feature = "mesh",
     derive(mesh_protobuf::Protobuf),

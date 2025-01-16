@@ -13,7 +13,10 @@ use hvdef::Vtl;
 use hvdef::HV_PAGE_SIZE;
 use memory_range::MemoryRange;
 use minimal_rt::arch::hypercall::invoke_hypercall;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 /// Page-aligned, page-sized buffer for use with hypercalls
@@ -256,7 +259,7 @@ impl HvCall {
             // HvInputVtl value.
             target_vtl: Vtl::Vtl2.into(),
             reserved: [0; 3],
-            vp_vtl_context: zerocopy::FromZeroes::new_zeroed(),
+            vp_vtl_context: zerocopy::FromZeros::new_zeroed(),
         };
 
         header.write_to_prefix(Self::input_page().buffer.as_mut_slice());

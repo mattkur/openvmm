@@ -7,7 +7,10 @@ use x86defs::RFlags;
 use x86emu::Cpu;
 use x86emu::Gp;
 use x86emu::MAX_REP_LOOPS;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 #[test]
 fn lods() {

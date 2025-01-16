@@ -107,9 +107,12 @@ use vtl_array::VtlArray;
 use x86defs::snp::REG_TWEAK_BITMAP_OFFSET;
 use x86defs::snp::REG_TWEAK_BITMAP_SIZE;
 use x86defs::tdx::TdCallResult;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// General error returned by operations.
 #[derive(Error, Debug)]
@@ -622,7 +625,7 @@ impl TlbLockInfo {
 }
 
 #[bitfield(u32)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct WakeReason {
     extint: bool,
     message_queues: bool,

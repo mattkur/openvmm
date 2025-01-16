@@ -18,7 +18,10 @@ use task_control::StopTask;
 use task_control::TaskControl;
 use video_core::FramebufferFormat;
 use vmcore::vm_task::VmTaskDriver;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 const VRAM_RENDER_OFFSET: usize = 0x400000;
 

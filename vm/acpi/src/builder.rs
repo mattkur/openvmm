@@ -2,7 +2,10 @@
 // Licensed under the MIT License.
 
 use std::num::Wrapping;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 #[derive(Copy, Clone)]
 pub struct OemInfo {

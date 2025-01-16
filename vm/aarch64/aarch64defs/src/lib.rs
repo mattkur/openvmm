@@ -10,9 +10,12 @@ pub mod psci;
 
 use bitfield_struct::bitfield;
 use open_enum::open_enum;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// Aarch64 SPSR_EL2 register when in 64-bit mode. Usually called CPSR by
 /// hypervisors.
@@ -54,7 +57,7 @@ pub struct Cpsr64 {
 
 /// ESR_EL2, exception syndrome register.
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct EsrEl2 {
     #[bits(25)]
     pub iss: u32,
@@ -792,7 +795,7 @@ pub struct TranslationBaseEl1 {
 }
 
 #[bitfield(u64)]
-#[derive(PartialEq, Eq, AsBytes, FromBytes, FromZeroes)]
+#[derive(PartialEq, Eq, IntoBytes, Immutable, FromBytes)]
 pub struct Pte {
     pub valid: bool,
     pub not_large_page: bool,

@@ -23,9 +23,11 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use thiserror::Error;
 use vmcore::vm_task::VmTaskDriver;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 /// An error getting a namespace.
 #[derive(Debug, Error)]
@@ -633,6 +635,6 @@ fn nvm_cmd(opcode: nvm::NvmOpcode, nsid: u32) -> spec::Command {
     spec::Command {
         cdw0: spec::Cdw0::new().with_opcode(opcode.0),
         nsid,
-        ..FromZeroes::new_zeroed()
+        ..FromZeros::new_zeroed()
     }
 }

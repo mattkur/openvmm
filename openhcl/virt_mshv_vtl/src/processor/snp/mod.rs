@@ -71,9 +71,12 @@ use x86defs::snp::SevVmsa;
 use x86defs::snp::Vmpl;
 use x86defs::RFlags;
 use x86defs::SegmentRegister;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// A backing for SNP partitions.
 #[derive(InspectMut)]
@@ -567,7 +570,7 @@ fn hv_table_to_snp(val: &hvdef::HvX64TableRegister) -> SevSelector {
     SevSelector {
         limit: val.limit as u32,
         base: val.base,
-        ..FromZeroes::new_zeroed()
+        ..FromZeros::new_zeroed()
     }
 }
 
@@ -584,7 +587,7 @@ fn hv_table_from_snp(selector: &SevSelector) -> hvdef::HvX64TableRegister {
     hvdef::HvX64TableRegister {
         limit: selector.limit as u16,
         base: selector.base,
-        ..FromZeroes::new_zeroed()
+        ..FromZeros::new_zeroed()
     }
 }
 

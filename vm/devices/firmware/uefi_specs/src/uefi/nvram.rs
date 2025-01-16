@@ -7,9 +7,12 @@ use crate::uefi::signing::WIN_CERTIFICATE_UEFI_GUID;
 use crate::uefi::time::EFI_TIME;
 use bitfield_struct::bitfield;
 use guid::Guid;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// UEFI spec 8.2 - Variable Services
 #[bitfield(u32)]
@@ -57,7 +60,7 @@ impl EfiVariableAttributes {
 }
 
 /// UEFI spec 8.2
-#[derive(FromBytes, FromZeroes, AsBytes)]
+#[derive(FromBytes, IntoBytes)]
 #[repr(C)]
 pub struct EFI_VARIABLE_AUTHENTICATION_2 {
     /// Components Pad1, Nanosecond, TimeZone, Daylight and Pad2 shall be set to
@@ -98,11 +101,14 @@ impl EFI_VARIABLE_AUTHENTICATION_2 {
 /// UEFI spec 32.4.1
 pub mod signature_list {
     use guid::Guid;
-    use zerocopy::AsBytes;
-    use zerocopy::FromBytes;
-    use zerocopy::FromZeroes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
-    #[derive(Debug, PartialEq, Eq, FromBytes, FromZeroes, AsBytes)]
+use zerocopy::Immutable;
+    use zerocopy::FromBytes;
+    
+
+    #[derive(Debug, PartialEq, Eq, FromBytes, IntoBytes)]
     #[repr(C)]
     pub struct EFI_SIGNATURE_LIST {
         /// Type of the signature. GUID signature types are defined in "Related
@@ -132,7 +138,7 @@ pub mod signature_list {
     }
 
     #[derive(
-        Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, FromBytes, FromZeroes, AsBytes,
+        Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, FromBytes, IntoBytes, Immutable,
     )]
     #[repr(C)]
     pub struct EFI_SIGNATURE_DATA {

@@ -16,7 +16,9 @@ use parking_lot::RwLock;
 use std::io;
 use std::sync::atomic;
 use thiserror::Error;
-use zerocopy::FromZeroes;
+
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
 
 // These are the flags that libfuse enables by default when calling init.
 const DEFAULT_FLAGS: u32 = FUSE_ASYNC_READ
@@ -488,7 +490,7 @@ impl Session {
     }
 
     /// Send a reply and call the release method if the reply was interrupted.
-    fn send_release_if_interrupted<TArg: zerocopy::AsBytes + std::fmt::Debug>(
+    fn send_release_if_interrupted<TArg: IntoBytes + Immutable + std::fmt::Debug>(
         &self,
         request: &Request,
         sender: &mut impl ReplySender,

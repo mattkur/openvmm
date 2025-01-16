@@ -47,7 +47,10 @@ use std::task::Context;
 use thiserror::Error;
 use vmcore::device_state::ChangeDeviceState;
 use vmcore::line_interrupt::LineInterrupt;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 open_enum! {
     pub enum IdeIoPort: u16 {
@@ -1749,9 +1752,11 @@ mod tests {
     use std::task::Poll;
     use tempfile::NamedTempFile;
     use test_with_tracing::test;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+    use zerocopy::KnownLayout;
+
     use zerocopy::FromBytes;
-    use zerocopy::FromZeroes;
+    use zerocopy::Immutable;
 
     #[derive(Debug, Inspect)]
     struct MediaGeometry {
@@ -2313,7 +2318,7 @@ mod tests {
             recommended_multi_dma_time: 0x0078,
             min_pio_cycle_time_no_flow: 0x01FC, // Taken from a real CD device
             min_pio_cycle_time_flow: 0x00B4,    // Taken from a real CD device
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         assert_eq!(features.as_bytes(), ex_features.as_bytes());
     }
@@ -2413,7 +2418,7 @@ mod tests {
             total_sectors_48_bit: geometry.total_sectors.into(),
             default_sector_size_config: 0x4000, // describes the sector size related info. Reflect the underlying device sector size and logical:physical ratio
             logical_block_alignment: 0x4000, // describes alignment of logical blocks within physical block
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         assert_eq!(features.as_bytes(), ex_features.as_bytes());
     }

@@ -35,18 +35,24 @@ use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use thiserror::Error;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 mod pipe_protocol {
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
     use zerocopy::FromBytes;
-    use zerocopy::FromZeroes;
+    
 
     /// Pipe channel packets are prefixed with this header to allow for
     /// non-8-multiple lengths.
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
     pub struct PipeHeader {
         pub packet_type: u32,
         pub len: u32,
@@ -75,16 +81,19 @@ mod protocol {
     use std::fmt::Debug;
     use std::sync::atomic::AtomicU32;
     use std::sync::atomic::Ordering;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
     use zerocopy::FromBytes;
-    use zerocopy::FromZeroes;
+    
 
     /// VmBus ring buffers are sized in multiples 4KB pages, with a 4KB control page.
     pub const PAGE_SIZE: usize = 4096;
 
     /// The descriptor header on every packet.
     #[repr(C)]
-    #[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
     pub struct PacketDescriptor {
         pub packet_type: u16,
         pub data_offset8: u16,
@@ -150,7 +159,7 @@ mod protocol {
     /// A transfer range specifying a length and offset within a transfer page
     /// set. Only used by NetVSP.
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
     pub struct TransferPageRange {
         pub byte_count: u32,
         pub byte_offset: u32,
@@ -159,7 +168,7 @@ mod protocol {
     /// The extended portion of the packet descriptor that describes a transfer
     /// page packet.
     #[repr(C)]
-    #[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
     pub struct TransferPageHeader {
         pub transfer_page_set_id: u16,
         pub reserved: u16, // may have garbage non-zero values
@@ -168,7 +177,7 @@ mod protocol {
 
     /// The extended portion of the packet descriptor describing a GPA direct packet.
     #[repr(C)]
-    #[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
     pub struct GpaDirectHeader {
         pub reserved: u32, // may have garbage non-zero values
         pub range_count: u32,
@@ -178,7 +187,7 @@ mod protocol {
 
     /// The packet footer.
     #[repr(C)]
-    #[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
     pub struct Footer {
         pub reserved: u32,
         /// The ring offset of the packet.

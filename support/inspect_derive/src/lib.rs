@@ -171,7 +171,7 @@ impl Parse for FieldAttr {
         } else if ident == "binary" {
             Self::With(parse_quote_spanned!(ident.span()=> ::inspect::AsBinary))
         } else if ident == "bytes" {
-            Self::With(parse_quote_spanned!(ident.span()=> ::inspect::AsBytes))
+            Self::With(parse_quote_spanned!(ident.span()=> ::inspect::IntoBytes))
         } else if ident == "iter_by_key" {
             Self::With(parse_quote_spanned!(ident.span()=> ::inspect::iter_by_key))
         } else if ident == "iter_by_index" {

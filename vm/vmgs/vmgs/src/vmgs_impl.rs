@@ -30,9 +30,12 @@ use vmgs_format::VMGS_FILE_TABLE_BLOCK_SIZE;
 use vmgs_format::VMGS_MIN_FILE_BLOCK_OFFSET;
 use vmgs_format::VMGS_SIGNATURE;
 use vmgs_format::VMGS_VERSION_3_0;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// Info about a specific VMGS file.
 #[derive(Debug)]

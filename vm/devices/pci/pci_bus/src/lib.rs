@@ -36,8 +36,11 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use vmcore::device_state::ChangeDeviceState;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 /// Standard x86 IO ports associated with PCI
 #[expect(missing_docs)] // self explanatory constants

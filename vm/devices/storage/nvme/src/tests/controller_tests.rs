@@ -22,8 +22,11 @@ use pci_core::test_helpers::TestPciInterruptController;
 use user_driver::backoff::Backoff;
 use vmcore::vm_task::SingleDriverBackend;
 use vmcore::vm_task::VmTaskDriverSource;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 fn instantiate_controller(
     driver: DefaultDriver,

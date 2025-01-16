@@ -13,9 +13,12 @@ use nvme_spec::nvm;
 use std::fs;
 use std::io;
 use std::os::unix::io::AsRawFd;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 mod ioctl {
     use nix::ioctl_readwrite;
@@ -76,7 +79,7 @@ enum Opcode {
 fn nvme_command(
     file: &fs::File,
     opcode: Opcode,
-    data: &mut (impl AsBytes + FromBytes + ?Sized),
+    data: &mut (impl zerocopy::KnownLayout + zerocopy::IntoBytes + ?Sized),
     command: &NvmeCommand,
 ) -> io::Result<u32> {
     let mut cmd = ioctl::NvmeCmd {
@@ -119,7 +122,7 @@ fn nvme_command(
 const PAGE_SIZE: usize = 4096;
 
 #[repr(C, align(4096))]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 struct Page([u8; PAGE_SIZE]);
 
 const ZERO_PAGE: Page = Page([0; PAGE_SIZE]);

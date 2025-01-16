@@ -54,9 +54,12 @@ use std::sync::Arc;
 use task_control::AsyncRun;
 use task_control::InspectTaskMut;
 use task_control::StopTask;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 const BNIC_DEV_ID: GdmaDevId = GdmaDevId {
     ty: GdmaDevType::GDMA_DEVICE_MANA,
@@ -273,7 +276,7 @@ impl HwControl {
             let rx_oob = HwcRxOob {
                 wqe_addr_low_or_offset: rqe_offset,
                 tx_oob_data_size: (size_of_val(&resp) + response_len) as u32,
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             };
 
             self.state
@@ -339,7 +342,7 @@ impl HwControl {
             GdmaRequestType::GDMA_LIST_DEVICES => {
                 let mut resp = GdmaListDevicesResp {
                     num_of_devs: 2,
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 };
                 resp.devs[0] = HWC_DEV_ID;
                 resp.devs[1] = BNIC_DEV_ID;

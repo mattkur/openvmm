@@ -6,9 +6,12 @@
 //! `IGVM_ATTEST` host request.
 
 use open_enum::open_enum;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 const ATTESTATION_VERSION: u32 = 2;
 const ATTESTATION_SIGNATURE: u32 = 0x414c4348; // 'HCLA'
@@ -41,7 +44,7 @@ pub const AK_CERT_RESPONSE_HEADER_VERSION: u32 = 1;
 /// The struct (includes the appended [`runtime_claims::RuntimeClaims`]) also serves as the
 /// attestation report in vTPM guest attestation.
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct IgvmAttestRequest {
     /// Header (unmeasured)
     pub header: IgvmAttestRequestHeader,
@@ -57,7 +60,7 @@ pub struct IgvmAttestRequest {
 
 open_enum! {
     /// TEE attestation report type (C-style enum)
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum IgvmAttestReportType: u32 {
         /// Invalid report
         INVALID_REPORT = 0,
@@ -74,7 +77,7 @@ open_enum! {
 
 open_enum! {
     /// Request type (C-style enum)
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum IgvmAttestRequestType: u32 {
         /// Invalid request
         INVALID_REQUEST = 0,
@@ -89,7 +92,7 @@ open_enum! {
 
 open_enum! {
     /// Hash algorithm used for content of report data (C-style enum)
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum IgvmAttestHashType: u32 {
         /// Invalid hash
         INVALID_HASH = 0,
@@ -104,7 +107,7 @@ open_enum! {
 
 /// Unmeasured data used to provide transport sanity and versioning (C-style struct)
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct IgvmAttestRequestHeader {
     /// Signature
     pub signature: u32,
@@ -138,7 +141,7 @@ const IGVM_ATTEST_VERSION_CURRENT: u32 = 1;
 
 /// Unmeasured user data, used for host attestation requests (C-style struct)
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct IgvmAttestRequestData {
     /// Data size
     pub data_size: u32,
@@ -174,7 +177,7 @@ impl IgvmAttestRequestData {
 ///
 /// reSearch query: `IGVM_KEY_MESSAGE_HEADER`
 #[repr(C)]
-#[derive(Default, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Default, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct IgvmAttestKeyReleaseResponseHeader {
     /// Data size
     pub data_size: u32,
@@ -187,7 +190,7 @@ pub struct IgvmAttestKeyReleaseResponseHeader {
 ///
 /// reSearch query: `IGVM_KEY_MESSAGE_HEADER`
 #[repr(C)]
-#[derive(Default, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Default, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct IgvmAttestWrappedKeyResponseHeader {
     /// Data size
     pub data_size: u32,
@@ -199,7 +202,7 @@ pub struct IgvmAttestWrappedKeyResponseHeader {
 ///
 /// reSearch query: `IGVM_CERT_MESSAGE_HEADER`
 #[repr(C)]
-#[derive(Default, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Default, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct IgvmAttestAkCertResponseHeader {
     /// Data size
     pub data_size: u32,

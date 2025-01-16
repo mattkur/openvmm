@@ -11,8 +11,11 @@ use crate::spec;
 use crate::spec::nvm;
 use disk_backend::pr::PersistentReservation;
 use nvme_common::to_nvme_reservation_type;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 impl Namespace {
     pub(super) async fn reservation_register(
@@ -82,9 +85,9 @@ impl Namespace {
                     .map_or(nvm::ReservationType(0), to_nvme_reservation_type),
                 regctl: (report.controllers.len() as u16).into(),
                 ptpls: 0,
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             },
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
 
         let controllers = report.controllers.iter().map(|controller| {
@@ -97,7 +100,7 @@ impl Namespace {
                     .with_holds_reservation(controller.holds_reservation),
                 hostid,
                 rkey: controller.key,
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             }
         });
 
@@ -116,7 +119,7 @@ impl Namespace {
                         rcsts: controller.rcsts,
                         hostid: controller.hostid[..8].try_into().unwrap(),
                         rkey: controller.rkey,
-                        ..FromZeroes::new_zeroed()
+                        ..FromZeros::new_zeroed()
                     }
                     .as_bytes(),
                 );

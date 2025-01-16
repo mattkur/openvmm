@@ -26,7 +26,10 @@ use std::marker::PhantomData;
 use std::sync::atomic::Ordering::Acquire;
 use std::sync::Arc;
 use user_driver::memory::MemoryBlock;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 /// An interface to write a doorbell value to signal the device.
@@ -121,7 +124,7 @@ impl CqEq<Eqe> {
     }
 }
 
-impl<T: AsBytes + FromBytes> CqEq<T> {
+impl<T: zerocopy::KnownLayout + zerocopy::IntoBytes> CqEq<T> {
     /// Creates a new queue.
     fn new(
         queue_type: GdmaQueueType,
@@ -319,7 +322,7 @@ impl Wq {
     /// external data via a scatter-gather list.
     pub fn push<I: IntoIterator<Item = Sge>>(
         &mut self,
-        oob: &impl AsBytes,
+        oob: &impl IntoBytes, Immutable,
         sgl: I,
         client_oob_in_sgl: Option<u8>,
         gd_client_unit_data: u16,

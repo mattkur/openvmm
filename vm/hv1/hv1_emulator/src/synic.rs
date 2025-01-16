@@ -27,7 +27,10 @@ use std::array;
 use std::sync::Arc;
 use virt::x86::MsrError;
 use vm_topology::processor::VpIndex;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 /// The virtual processor synthetic interrupt controller state.
 #[derive(Inspect)]

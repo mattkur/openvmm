@@ -32,9 +32,12 @@ use winapi::um::fileapi::WriteFile;
 use winapi::um::ioapiset::CancelIo;
 use winapi::um::synchapi::WaitForSingleObject;
 use winapi::um::winbase::INFINITE;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 use zerocopy_helpers::FromBytesExt;
 
 const MINIMUM_FRAME_SIZE: usize = 60;
@@ -65,7 +68,7 @@ struct QueueState {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 struct DioNicPacketHeader {
     len: u32,
     next: u32,

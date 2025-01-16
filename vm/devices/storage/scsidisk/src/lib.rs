@@ -53,9 +53,11 @@ use tracing_helpers::ErrorValueExt;
 use unmap::validate_lba_range;
 use vmcore::save_restore::RestoreError;
 use vmcore::save_restore::SaveError;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 const UNMAP_RANGE_DESCRIPTOR_COUNT_MAX: u16 = 4096;
 const VHDMP_MAX_WRITE_SAME_LENGTH_BYTES: u64 = 8 * 1024 * 1024; // bytes
@@ -491,14 +493,14 @@ impl SimpleScsiDisk {
             temp10 = scsi::ModeParameterHeader10 {
                 mode_data_length: MODE_DATA_LENGTH10.into(),
                 device_specific_parameter: dsp,
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             };
             temp10.as_bytes()
         } else {
             temp = scsi::ModeParameterHeader {
                 mode_data_length: MODE_DATA_LENGTH,
                 device_specific_parameter: dsp,
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             };
             temp.as_bytes()
         };
@@ -506,7 +508,7 @@ impl SimpleScsiDisk {
         let mut page = scsi::ModeCachingPage {
             page_code: scsi::MODE_PAGE_CACHING,
             page_length: (MODE_CACHING_PAGE_SIZE - 2) as u8,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
 
         if (page_control == scsi::MODE_CONTROL_CURRENT_VALUES
@@ -554,7 +556,7 @@ impl SimpleScsiDisk {
                         bytes_per_block: (1u32 << self.sector_shift).into(),
                     },
                     exponents: self.physical_extra_shift,
-                    ..FromZeroes::new_zeroed()
+                    ..FromZeros::new_zeroed()
                 };
 
                 if self.scsi_parameters.support_unmap {

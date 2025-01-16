@@ -27,9 +27,12 @@ use vmbus_channel::simple::SimpleVmbusDevice;
 use vmbus_channel::RawAsyncChannel;
 use vmbus_ring::RingMem;
 use vmcore::save_restore::SavedStateRoot;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 use zerocopy_helpers::FromBytesExt;
 
 #[derive(Debug, Error)]
@@ -103,7 +106,7 @@ async fn recv_packet(reader: &mut (impl AsyncRecv + Unpin)) -> Result<Request, E
     Ok(request)
 }
 
-async fn send_packet<T: AsBytes>(
+async fn send_packet<T: IntoBytes>(
     writer: &mut (impl AsyncSend + Unpin),
     typ: u32,
     size: u32,
@@ -359,7 +362,7 @@ async fn post_mouse_packet(
     channel: &mut (impl AsyncSend + Unpin),
 ) -> Result<(), Error> {
     let mut scrolled = protocol::ScrollType::NoChange;
-    let mut mouse_packet: protocol::MousePacket = FromZeroes::new_zeroed();
+    let mut mouse_packet: protocol::MousePacket = FromZeros::new_zeroed();
     mouse_packet.x = mouse_data.x;
     mouse_packet.y = mouse_data.y;
 

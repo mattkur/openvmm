@@ -8,9 +8,12 @@ use open_enum::open_enum;
 use size_of_val;
 use static_assertions::const_assert_eq;
 use thiserror::Error;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 use zerocopy::Unaligned;
 use zerocopy::LE;
 use zerocopy::U16;
@@ -18,7 +21,7 @@ use zerocopy::U32;
 use zerocopy::U64;
 
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, Unaligned)]
 pub struct Madt {
     pub apic_addr: u32,
     pub flags: u32,
@@ -31,7 +34,7 @@ impl Table for Madt {
 pub const MADT_PCAT_COMPAT: u32 = 1 << 0;
 
 open_enum! {
-    #[derive(AsBytes, FromBytes, FromZeroes, Unaligned)]
+    #[derive(IntoBytes, Immutable, FromBytes, Unaligned)]
     pub enum MadtType: u8 {
         APIC = 0x0,
         IO_APIC = 0x1,
@@ -43,14 +46,14 @@ open_enum! {
 }
 
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct MadtEntryHeader {
     pub typ: MadtType,
     pub length: u8,
 }
 
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoBytes, Immutable, FromBytes)]
 pub struct MadtApic {
     pub typ: MadtType,
     pub length: u8,
@@ -77,7 +80,7 @@ pub const MADT_APIC_ENABLED: u32 = 1 << 0;
 pub const MADT_APIC_ONLINE_CAPABLE: u32 = 1 << 1;
 
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoBytes, Immutable, FromBytes)]
 pub struct MadtX2Apic {
     pub typ: MadtType,
     pub length: u8,
@@ -103,7 +106,7 @@ impl MadtX2Apic {
 }
 
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct MadtIoApic {
     pub typ: MadtType,
     pub length: u8,
@@ -129,7 +132,7 @@ impl MadtIoApic {
 }
 
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct MadtInterruptSourceOverride {
     pub typ: MadtType,
     pub length: u8,
@@ -178,7 +181,7 @@ impl MadtInterruptSourceOverride {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 pub struct MadtGicd {
     pub typ: MadtType,
     pub length: u8,
@@ -210,7 +213,7 @@ impl MadtGicd {
 // TODO: use LE types everywhere, as here, to avoid #[repr(packed)] and to be
 // specific about endianness (which the ACPI spec dictates is always LE).
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, Unaligned)]
 pub struct MadtGicc {
     pub typ: MadtType,
     pub length: u8,

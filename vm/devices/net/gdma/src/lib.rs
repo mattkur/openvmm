@@ -56,8 +56,11 @@ use vmcore::save_restore::SaveError;
 use vmcore::save_restore::SaveRestore;
 use vmcore::save_restore::SavedStateNotSupported;
 use vmcore::vm_task::VmTaskDriverSource;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 const REGMAP: Range<usize> = 0..40;
 const SHMEM: Range<usize> = 40..72;
@@ -173,7 +176,7 @@ impl GdmaDevice {
         Self {
             config,
             msix,
-            shmem: Shmem(FromZeroes::new_zeroed()),
+            shmem: Shmem(FromZeros::new_zeroed()),
             regmap,
             queues,
             destroying_hwc: false,

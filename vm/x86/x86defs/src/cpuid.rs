@@ -8,12 +8,11 @@ use bitfield_struct::bitfield;
 use core::fmt::Display;
 use open_enum::open_enum;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
 
 // TODO: Taken from htcpuid.h
 // TODO: Are all these values public not under NDA?
 open_enum! {
-    #[derive(FromBytes, FromZeroes)]
+    #[derive(FromBytes)]
     pub enum CpuidFunction : u32 {
         BasicMinimum = 0x00000000,
         VendorAndMaxFunction = 0x00000000,

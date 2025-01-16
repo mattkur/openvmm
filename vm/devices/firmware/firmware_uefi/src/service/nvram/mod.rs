@@ -27,7 +27,10 @@ use thiserror::Error;
 use uefi_nvram_storage::InspectableNvramStorage;
 use uefi_specs::uefi::common::EfiStatus;
 use uefi_specs::uefi::nvram::EfiVariableAttributes;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 #[cfg(feature = "fuzzing")]
 pub mod spec_services;

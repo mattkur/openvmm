@@ -9,10 +9,13 @@
 use self::packed_nums::*;
 use bitfield_struct::bitfield;
 use thiserror::Error;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::ByteOrder;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 #[allow(non_camel_case_types)]
 mod packed_nums {
@@ -78,7 +81,7 @@ pub enum ResponseValidationError {
 }
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes, PartialEq)]
 pub struct ReservedHandle(pub u32_be);
 
 impl PartialEq<ReservedHandle> for u32 {
@@ -114,7 +117,7 @@ pub const NV_INDEX_RANGE_BASE_TCG_ASSIGNED: u32 = (TPM20_HT_NV_INDEX as u32) << 
 pub const MAX_DIGEST_BUFFER_SIZE: usize = 1024;
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
 pub struct SessionTag(pub u16_be);
 
 impl PartialEq<SessionTag> for u16 {
@@ -199,7 +202,7 @@ impl SessionTagEnum {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes, PartialEq)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes, PartialEq)]
 pub struct CommandCode(pub u32_be);
 
 impl PartialEq<CommandCode> for u32 {
@@ -581,7 +584,7 @@ impl ResponseCode {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes, PartialEq)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes, PartialEq)]
 pub struct AlgId(pub u16_be);
 
 impl PartialEq<AlgId> for u16 {
@@ -635,7 +638,7 @@ impl AlgIdEnum {
 
 /// `TPMA_OBJECT`
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes, PartialEq)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes, PartialEq)]
 pub struct TpmaObject(pub u32_be);
 
 impl TpmaObject {
@@ -682,7 +685,7 @@ pub struct TpmaObjectBits {
 
 /// `TPMA_NV`
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes, PartialEq)]
+#[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes, PartialEq)]
 pub struct TpmaNv(pub u32_be);
 
 impl TpmaNv {
@@ -767,7 +770,7 @@ pub mod protocol {
         use super::*;
 
         #[repr(C)]
-        #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+        #[derive(Debug, IntoBytes, Immutable, FromBytes)]
         pub struct CmdHeader {
             pub session_tag: SessionTag,
             pub size: u32_be,
@@ -789,7 +792,7 @@ pub mod protocol {
         }
 
         #[repr(C)]
-        #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+        #[derive(Debug, IntoBytes, Immutable, FromBytes)]
         pub struct ReplyHeader {
             pub session_tag: u16_be,
             pub size: u32_be,
@@ -850,7 +853,7 @@ pub mod protocol {
         }
 
         #[repr(C)]
-        #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+        #[derive(Debug, IntoBytes, Immutable, FromBytes)]
         pub struct CmdAuth {
             handle: ReservedHandle,
             nonce_2b: u16_be,
@@ -870,7 +873,7 @@ pub mod protocol {
         }
 
         #[repr(C)]
-        #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+        #[derive(Debug, IntoBytes, Immutable, FromBytes)]
         pub struct ReplyAuth {
             pub nonce_2b: u16_be,
             pub session: u8,
@@ -882,7 +885,7 @@ pub mod protocol {
     use common::ReplyHeader;
 
     /// Marker trait for a struct that corresponds to a TPM Command
-    pub trait TpmCommand: AsBytes + FromBytes + Sized {
+    pub trait TpmCommand: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized {
         type Reply: TpmReply;
 
         fn base_validate_reply(
@@ -898,7 +901,7 @@ pub mod protocol {
     }
 
     /// Marker trait for a struct that corresponds to a TPM Reply
-    pub trait TpmReply: AsBytes + FromBytes + Sized {
+    pub trait TpmReply: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized {
         type Command: TpmCommand;
 
         fn base_validation(
@@ -916,7 +919,7 @@ pub mod protocol {
 
     /// General type for TPM 2.0 sized buffers.
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes)]
     pub struct Tpm2bBuffer {
         pub size: u16_be,
         // Use value that is large enough as the buffer size so that we
@@ -991,7 +994,7 @@ pub mod protocol {
 
     /// `TPML_PCR_SELECTION`
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes)]
     pub struct TpmlPcrSelection {
         pub count: u32_be,
         pub pcr_selections: [PcrSelection; 5],
@@ -1065,7 +1068,7 @@ pub mod protocol {
 
     /// `TPMS_SENSITIVE_CREATE`
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes)]
     pub struct TpmsSensitiveCreate {
         user_auth: Tpm2bBuffer,
         data: Tpm2bBuffer,
@@ -1100,7 +1103,7 @@ pub mod protocol {
 
     /// `TPM2B_SENSITIVE_CREATE`
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes)]
     pub struct Tpm2bSensitiveCreate {
         size: u16_be,
         sensitive: TpmsSensitiveCreate,
@@ -1137,7 +1140,7 @@ pub mod protocol {
 
     /// `TPMT_RSA_SCHEME`
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes, PartialEq)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
     pub struct TpmtRsaScheme {
         scheme: AlgId,
         hash_alg: AlgId,
@@ -1200,7 +1203,7 @@ pub mod protocol {
 
     /// `TPMT_SYM_DEF_OBJECT`
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes, PartialEq)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
     pub struct TpmtSymDefObject {
         algorithm: AlgId,
         key_bits: u16_be,
@@ -1280,7 +1283,7 @@ pub mod protocol {
 
     /// `TPMS_RSA_PARMS`
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes, PartialEq)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
     pub struct TpmsRsaParams {
         symmetric: TpmtSymDefObject,
         scheme: TpmtRsaScheme,
@@ -1361,7 +1364,7 @@ pub mod protocol {
 
     /// `TPMT_PUBLIC`
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes)]
     pub struct TpmtPublic {
         r#type: AlgId,
         name_alg: AlgId,
@@ -1470,7 +1473,7 @@ pub mod protocol {
 
     /// `TPM2B_PUBLIC`
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes)]
     pub struct Tpm2bPublic {
         pub size: u16_be,
         pub public_area: TpmtPublic,
@@ -1525,7 +1528,7 @@ pub mod protocol {
 
     /// `TPMS_CREATION_DATA`
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct TpmsCreationData {
         pcr_select: TpmlPcrSelection,
         pcr_digest: Tpm2bBuffer,
@@ -1600,7 +1603,7 @@ pub mod protocol {
     }
 
     /// `TPM2B_CREATION_DATA`
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     #[repr(C)]
     pub struct Tpm2bCreationData {
         size: u16_be,
@@ -1639,7 +1642,7 @@ pub mod protocol {
 
     /// `TPMT_TK_CREATION`
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct TpmtTkCreation {
         tag: SessionTag,
         hierarchy: ReservedHandle,
@@ -1685,7 +1688,7 @@ pub mod protocol {
 
     /// `TPMS_NV_PUBLIC`
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes)]
     pub struct TpmsNvPublic {
         nv_index: u32_be,
         name_alg: AlgId,
@@ -1783,7 +1786,7 @@ pub mod protocol {
 
     /// `TPM2B_NV_PUBLIC`
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, Copy, Clone, FromBytes, IntoBytes)]
     pub struct Tpm2bNvPublic {
         size: u16_be,
         pub nv_public: TpmsNvPublic,
@@ -1843,7 +1846,7 @@ pub mod protocol {
     // === ClearControl === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct ClearControlCmd {
         header: CmdHeader,
         auth_handle: ReservedHandle,
@@ -1870,7 +1873,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, IntoBytes, Immutable, FromBytes)]
     pub struct ClearControlReply {
         pub header: ReplyHeader,
         pub param_size: u32_be,
@@ -1896,7 +1899,7 @@ pub mod protocol {
     // === Clear === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct ClearCmd {
         header: CmdHeader,
 
@@ -1921,7 +1924,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, IntoBytes, Immutable, FromBytes)]
     pub struct ClearReply {
         pub header: ReplyHeader,
         pub param_size: u32_be,
@@ -1953,7 +1956,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct StartupCmd {
         header: CmdHeader,
         startup_type: u16_be,
@@ -1973,7 +1976,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, IntoBytes, Immutable, FromBytes)]
     pub struct StartupReply {
         pub header: ReplyHeader,
     }
@@ -1997,7 +2000,7 @@ pub mod protocol {
     // === Self Test === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct SelfTestCmd {
         header: CmdHeader,
         full_test: u8,
@@ -2013,7 +2016,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, IntoBytes, Immutable, FromBytes)]
     pub struct SelfTestReply {
         pub header: ReplyHeader,
     }
@@ -2037,7 +2040,7 @@ pub mod protocol {
     // === Hierarchy Control === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct HierarchyControlCmd {
         header: CmdHeader,
 
@@ -2069,7 +2072,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, IntoBytes, Immutable, FromBytes)]
     pub struct HierarchyControlReply {
         pub header: ReplyHeader,
         pub param_size: u32_be,
@@ -2095,7 +2098,7 @@ pub mod protocol {
     // === Pcr Allocate === //
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, Copy, Clone, IntoBytes, Immutable, FromBytes)]
     pub struct PcrSelection {
         pub hash: AlgId,
         pub size_of_select: u8,
@@ -2158,7 +2161,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, IntoBytes, Immutable, FromBytes)]
     pub struct PcrAllocateCmd {
         header: CmdHeader,
         auth_handle: ReservedHandle,
@@ -2229,7 +2232,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, IntoBytes, Immutable, FromBytes)]
     pub struct PcrAllocateReply {
         pub header: ReplyHeader,
         pub auth_size: u32_be,
@@ -2260,7 +2263,7 @@ pub mod protocol {
     // === ChangeSeed === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct ChangeSeedCmd {
         header: CmdHeader,
         auth_handle: ReservedHandle,
@@ -2285,7 +2288,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+    #[derive(Debug, IntoBytes, Immutable, FromBytes)]
     pub struct ChangeSeedReply {
         pub header: ReplyHeader,
         pub param_size: u32_be,
@@ -2312,7 +2315,7 @@ pub mod protocol {
     // === CreatePrimary === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct CreatePrimaryCmd {
         pub header: CmdHeader,
         primary_handle: ReservedHandle,
@@ -2394,7 +2397,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct CreatePrimaryReply {
         pub header: ReplyHeader,
         pub object_handle: ReservedHandle,
@@ -2498,7 +2501,7 @@ pub mod protocol {
     // === FlushContext === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct FlushContextCmd {
         pub header: CmdHeader,
         // Parameter
@@ -2518,7 +2521,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct FlushContextReply {
         pub header: ReplyHeader,
     }
@@ -2542,7 +2545,7 @@ pub mod protocol {
     // === EvictControl === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct EvictControlCmd {
         header: CmdHeader,
         auth_handle: ReservedHandle,
@@ -2574,7 +2577,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct EvictControlReply {
         pub header: ReplyHeader,
     }
@@ -2598,7 +2601,7 @@ pub mod protocol {
     // === ReadPublic === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct ReadPublicCmd {
         header: CmdHeader,
         object_handle: ReservedHandle,
@@ -2614,7 +2617,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct ReadPublicReply {
         pub header: ReplyHeader,
         pub out_public: Tpm2bPublic,
@@ -2684,7 +2687,7 @@ pub mod protocol {
     // === Nv DefineSpace === //
 
     #[repr(C)]
-    #[derive(FromBytes, FromZeroes, AsBytes)]
+    #[derive(FromBytes, IntoBytes)]
     pub struct NvDefineSpaceCmd {
         header: CmdHeader,
         auth_handle: ReservedHandle,
@@ -2752,7 +2755,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct NvDefineSpaceReply {
         pub header: ReplyHeader,
     }
@@ -2776,7 +2779,7 @@ pub mod protocol {
     // === Nv UndefineSpace === //
 
     #[repr(C)]
-    #[derive(FromBytes, FromZeroes, AsBytes)]
+    #[derive(FromBytes, IntoBytes)]
     pub struct NvUndefineSpaceCmd {
         header: CmdHeader,
         auth_handle: ReservedHandle,
@@ -2804,7 +2807,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct NvUndefineSpaceReply {
         pub header: ReplyHeader,
     }
@@ -2828,7 +2831,7 @@ pub mod protocol {
     // === Nv ReadPublic === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct NvReadPublicCmd {
         header: CmdHeader,
         nv_index: u32_be,
@@ -2844,7 +2847,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct NvReadPublicReply {
         pub header: ReplyHeader,
         // Parameters
@@ -2907,7 +2910,7 @@ pub mod protocol {
     // === Nv Write === //
 
     #[repr(C)]
-    #[derive(FromBytes, FromZeroes, AsBytes)]
+    #[derive(FromBytes, IntoBytes)]
     pub struct NvWriteCmd {
         header: CmdHeader,
         auth_handle: ReservedHandle,
@@ -3001,7 +3004,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct NvWriteReply {
         pub header: ReplyHeader,
     }
@@ -3025,7 +3028,7 @@ pub mod protocol {
     // === Nv Read === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct NvReadCmd {
         header: CmdHeader,
         auth_handle: ReservedHandle,
@@ -3126,7 +3129,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct NvReadReply {
         pub header: ReplyHeader,
         pub parameter_size: u32_be,
@@ -3202,7 +3205,7 @@ pub mod protocol {
     // === Import === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct ImportCmd {
         pub header: CmdHeader,
         pub auth_handle: ReservedHandle,
@@ -3324,7 +3327,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct ImportReply {
         pub header: ReplyHeader,
         pub parameter_size: u32_be,
@@ -3405,7 +3408,7 @@ pub mod protocol {
     // === Load === //
 
     #[repr(C)]
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub struct LoadCmd {
         header: CmdHeader,
         auth_handle: ReservedHandle,
@@ -3469,7 +3472,7 @@ pub mod protocol {
     }
 
     #[repr(C)]
-    #[derive(Debug, FromBytes, FromZeroes, AsBytes)]
+    #[derive(Debug, FromBytes, IntoBytes)]
     pub struct LoadReply {
         pub header: ReplyHeader,
         pub object_handle: ReservedHandle,

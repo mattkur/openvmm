@@ -9,7 +9,10 @@
 #![warn(missing_docs)]
 
 use thiserror::Error;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 #[expect(missing_docs)] // self-explanatory fields
 #[derive(Debug, Error)]

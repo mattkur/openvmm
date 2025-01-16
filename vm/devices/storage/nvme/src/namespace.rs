@@ -14,9 +14,12 @@ use disk_backend::Disk;
 use guestmem::GuestMemory;
 use inspect::Inspect;
 use scsi_buffers::RequestBuffers;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 /// An NVMe namespace built on top of a [`Disk`].
 #[derive(Inspect)]
@@ -63,7 +66,7 @@ impl Namespace {
             nlbaf: 0,
             flbas: nvm::Flbas::new().with_low_index(0),
             rescap,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         id.lbaf[0] = nvm::Lbaf::new().with_lbads(self.block_shift as u8);
     }

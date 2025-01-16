@@ -8,9 +8,12 @@ use crate::hyperv::common::EfiStatus64NoErrorBit;
 use bitfield_struct::bitfield;
 use guid::Guid;
 use open_enum::open_enum;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 #[allow(non_camel_case_types)]
 mod packed_nums {
@@ -23,7 +26,7 @@ open_enum! {
     /// These correlate with the semantics of the UEFI runtime variable services.
     ///
     /// MsvmPkg: `NVRAM_COMMAND`
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     pub enum NvramCommand: u32 {
         GET_VARIABLE = 0,
         SET_VARIABLE = 1,
@@ -37,7 +40,7 @@ open_enum! {
 
 /// MsvmPkg: `NVRAM_COMMAND_DESCRIPTOR`
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Clone, Copy, IntoBytes, Immutable, FromBytes)]
 pub struct NvramCommandDescriptor {
     pub command: NvramCommand,
     pub status: EfiStatus64NoErrorBit,
@@ -45,7 +48,7 @@ pub struct NvramCommandDescriptor {
 
 /// MsvmPkg: `NVRAM_COMMAND_DESCRIPTOR`
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct NvramDebugStringCommand {
     pub padding: u32,
     pub address: u64_ne,
@@ -54,7 +57,7 @@ pub struct NvramDebugStringCommand {
 
 /// MsvmPkg: `NVRAM_COMMAND_DESCRIPTOR`
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct NvramVariableCommand {
     /// UEFI variable attributes associated with the variable: access rights
     /// (RT/BS).
@@ -97,7 +100,7 @@ pub struct NvramVariableCommand {
 
 /// MsvmPkg: `NVRAM_COMMAND_DESCRIPTOR`
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct NvramQueryInfo {
     /// Attribute mask, controls variable type for which the information is
     /// returned.
@@ -113,7 +116,7 @@ pub struct NvramQueryInfo {
 
 /// MsvmPkg: `NVRAM_COMMAND_DESCRIPTOR`
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(IntoBytes, Immutable, FromBytes)]
 pub struct SignalRuntimeCommandFlags {
     pub vsm_aware: bool,
     #[bits(63)]
@@ -134,7 +137,7 @@ pub struct SignalRuntimeCommandFlags {
 /// } SignalRuntimeCommand;
 /// ```
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct NvramSignalRuntimeCommand {
     pub flags: SignalRuntimeCommandFlags,
 }

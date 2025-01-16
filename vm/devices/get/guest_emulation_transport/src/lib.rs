@@ -128,8 +128,10 @@ mod tests {
     use test_with_tracing::test;
     use vmbus_async::async_dgram::AsyncRecvExt;
     use vmbus_async::async_dgram::AsyncSendExt;
-    use zerocopy::AsBytes;
-    use zerocopy::FromZeroes;
+    use zerocopy::IntoBytes;
+    use zerocopy::KnownLayout;
+
+    use zerocopy::Immutable;
 
     #[async_test]
     async fn test_version_negotiation_failed(driver: DefaultDriver) {

@@ -64,7 +64,7 @@ use user_driver::DeviceBacking;
 use user_driver::HostDmaAllocator;
 use vmcore::slim_event::SlimEvent;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// Per queue limit, in number of pages.
 /// Used to handle bounce buffering non-contiguous network packet headers.

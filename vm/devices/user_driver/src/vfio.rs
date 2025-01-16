@@ -33,8 +33,11 @@ use vfio_sys::IommuType;
 use vfio_sys::IrqInfo;
 use vmcore::vm_task::VmTaskDriver;
 use vmcore::vm_task::VmTaskDriverSource;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 pub trait VfioDmaBuffer: 'static + Send + Sync {
     /// Create a new DMA buffer of the given `len` bytes. Guaranteed to be zero-initialized.
@@ -366,7 +369,7 @@ impl MappedRegionWithFallback {
         unsafe { self.mapping.as_ptr().byte_add(offset).cast() }
     }
 
-    fn read_from_mapping<T: AsBytes + FromBytes>(
+    fn read_from_mapping<T: zerocopy::KnownLayout + zerocopy::IntoBytes>(
         &self,
         offset: usize,
     ) -> Result<T, sparse_mmap::MemoryError> {
@@ -374,7 +377,7 @@ impl MappedRegionWithFallback {
         unsafe { sparse_mmap::try_read_volatile(self.mapping::<T>(offset)) }
     }
 
-    fn write_to_mapping<T: AsBytes + FromBytes>(
+    fn write_to_mapping<T: zerocopy::KnownLayout + zerocopy::IntoBytes>(
         &self,
         offset: usize,
         data: T,

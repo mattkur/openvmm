@@ -42,7 +42,10 @@ use vm_topology::processor::aarch64::Aarch64Topology;
 use vm_topology::processor::x86::X86Topology;
 use vm_topology::processor::ArchTopology;
 use vm_topology::processor::ProcessorTopology;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 #[derive(Debug, Error)]
 pub enum Error {

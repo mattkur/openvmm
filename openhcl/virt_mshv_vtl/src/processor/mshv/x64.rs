@@ -85,9 +85,12 @@ use x86defs::xsave::XFEATURE_SSE;
 use x86defs::xsave::XFEATURE_X87;
 use x86defs::RFlags;
 use x86defs::SegmentRegister;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 /// A backing for hypervisor-backed partitions (non-isolated and
 /// software-isolated).
@@ -1278,7 +1281,7 @@ impl UhProcessor<'_, HypervisorBackedX86> {
             HvX64RegisterName::Cr0,
             HvX64RegisterName::Efer,
         ];
-        let mut values = [FromZeroes::new_zeroed(); NAMES.len()];
+        let mut values = [FromZeros::new_zeroed(); NAMES.len()];
         self.runner
             .get_vp_registers(vtl, NAMES, &mut values)
             .expect("register query should not fail");
@@ -1819,7 +1822,7 @@ impl AccessVpState for UhVpStateAccess<'_, '_, HypervisorBackedX86> {
         //
         // This is just used for debugging, so this should not be a problem.
         #[repr(C)]
-        #[derive(AsBytes)]
+        #[derive(IntoBytes)]
         struct XsaveStandard {
             fxsave: Fxsave,
             xsave_header: XsaveHeader,
@@ -1828,7 +1831,7 @@ impl AccessVpState for UhVpStateAccess<'_, '_, HypervisorBackedX86> {
             fxsave: self.vp.runner.cpu_context().fx_state.clone(),
             xsave_header: XsaveHeader {
                 xstate_bv: XFEATURE_X87 | XFEATURE_SSE,
-                ..FromZeroes::new_zeroed()
+                ..FromZeros::new_zeroed()
             },
         };
         Ok(vp::Xsave::from_standard(state.as_bytes(), self.caps()))
@@ -2153,8 +2156,11 @@ mod save_restore {
     use vmcore::save_restore::RestoreError;
     use vmcore::save_restore::SaveError;
     use vmcore::save_restore::SaveRestore;
-    use zerocopy::AsBytes;
-    use zerocopy::FromZeroes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+    
 
     mod state {
         use mesh::payload::Protobuf;
@@ -2252,7 +2258,7 @@ mod save_restore {
                 .map_err(SaveError::Other)?;
 
             let dr6_shared = self.partition.hcl.dr6_shared();
-            let mut values = [FromZeroes::new_zeroed(); SHARED_REGISTERS.len()];
+            let mut values = [FromZeros::new_zeroed(); SHARED_REGISTERS.len()];
             let len = if dr6_shared {
                 SHARED_REGISTERS.len()
             } else {
@@ -2495,7 +2501,7 @@ mod save_restore {
                         HvX64RegisterName::Cr0,
                         HvX64RegisterName::Efer,
                     ];
-                    let mut values = [FromZeroes::new_zeroed(); NAMES.len()];
+                    let mut values = [FromZeros::new_zeroed(); NAMES.len()];
                     self.runner
                         // Non-VTL0 VPs should never be in startup suspend, so we only need to handle VTL0.
                         .get_vp_registers(GuestVtl::Vtl0, &NAMES, &mut values)

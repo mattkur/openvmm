@@ -19,7 +19,10 @@ use hvdef::HypercallCode;
 use minimal_rt::arch::msr::write_msr;
 use minimal_rt::arch::Serial;
 use x86defs::Exception;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 mod addr_space {

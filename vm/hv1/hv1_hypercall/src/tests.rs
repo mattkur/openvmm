@@ -27,9 +27,12 @@ use open_enum::open_enum;
 use sparse_mmap::SparseMapping;
 use std::vec;
 use test_with_tracing::test;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 // A useful base pattern to fill into hypercall input and output.
 const FILL_PATTERN: u64 = 0x123456789abcdef0;
@@ -360,7 +363,7 @@ struct TestController {
 }
 
 open_enum! {
-    #[derive(AsBytes, FromBytes, FromZeroes)]
+    #[derive(IntoBytes, Immutable, FromBytes)]
     enum TestHypercallCode: u16 {
         #![allow(non_upper_case_globals)]
         CallSimpleNoOutput = 0x1001,
@@ -379,11 +382,11 @@ open_enum! {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 struct TestInput([u8; 16]);
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, FromBytes)]
 struct TestOutput([u8; 16]);
 
 // Simple hypercall with no input or output.
@@ -764,7 +767,7 @@ impl TestController {
 
     fn simple_no_output<InputT>(&self, input_header: &InputT) -> HvResult<()>
     where
-        InputT: AsBytes + FromBytes + Sized + Copy,
+        InputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
     {
         println!("simple_no_output");
         match self.test_result {
@@ -782,8 +785,8 @@ impl TestController {
 
     fn simple<InputT, OutputT>(&self, input: &InputT) -> HvResult<OutputT>
     where
-        InputT: AsBytes + FromBytes + Sized + Copy,
-        OutputT: AsBytes + FromBytes + Sized + Copy,
+        InputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
+        OutputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
     {
         println!("simple");
         match self.test_result {
@@ -802,8 +805,8 @@ impl TestController {
 
     fn rep_no_output<InputT, InRepT>(&self, header: &InputT, input: &[InRepT]) -> HvRepResult
     where
-        InputT: AsBytes + FromBytes + Sized + Copy,
-        InRepT: AsBytes + FromBytes + Sized + Copy,
+        InputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
+        InRepT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
     {
         println!("rep_no_output");
         let (rep_start, rep_count) = self.reps.unwrap();
@@ -830,9 +833,9 @@ impl TestController {
         output: &mut [OutRepT],
     ) -> HvRepResult
     where
-        InputT: AsBytes + FromBytes + Sized + Copy,
-        InRepT: AsBytes + FromBytes + Sized + Copy,
-        OutRepT: AsBytes + FromBytes + Sized + Copy,
+        InputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
+        InRepT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
+        OutRepT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
     {
         println!("rep");
         let (rep_start, rep_count) = self.reps.unwrap();
@@ -861,7 +864,7 @@ impl TestController {
 
     fn variable_no_output<InputT>(&self, input: &InputT, var_header: &[u64]) -> HvResult<()>
     where
-        InputT: AsBytes + FromBytes + Sized + Copy,
+        InputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
     {
         println!("simple_variable_no_output");
         match self.test_result {
@@ -884,8 +887,8 @@ impl TestController {
 
     fn variable<InputT, OutputT>(&self, input: &InputT, var_header: &[u64]) -> HvResult<OutputT>
     where
-        InputT: AsBytes + FromBytes + Sized + Copy,
-        OutputT: AsBytes + FromBytes + Sized + Copy,
+        InputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
+        OutputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
     {
         println!("simple_variable");
         match self.test_result {
@@ -914,9 +917,9 @@ impl TestController {
         output: &mut [OutRepT],
     ) -> HvRepResult
     where
-        InputT: AsBytes + FromBytes + Sized + Copy,
-        InRepT: AsBytes + FromBytes + Sized + Copy,
-        OutRepT: AsBytes + FromBytes + Sized + Copy,
+        InputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
+        InRepT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
+        OutRepT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
     {
         println!("var_rep");
         let (rep_start, rep_count) = self.reps.unwrap();
@@ -949,7 +952,7 @@ impl TestController {
 
     fn generate_test_input<InputHeaderT>() -> InputHeaderT
     where
-        InputHeaderT: AsBytes + FromBytes + Sized + Copy,
+        InputHeaderT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
     {
         assert!(size_of::<InputHeaderT>() % 8 == 0);
         *InputHeaderT::ref_from(vec![FILL_PATTERN; size_of::<TestInput>() / 8].as_bytes()).unwrap()
@@ -963,7 +966,7 @@ impl TestController {
 
     fn generate_input_reps<InRepT>(rep_count: usize) -> Vec<InRepT>
     where
-        InRepT: AsBytes + FromBytes + Sized + Copy,
+        InRepT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
     {
         let size = rep_count * size_of::<InRepT>();
         let pattern_count = (size + 7) / 8;
@@ -978,7 +981,7 @@ impl TestController {
 
     fn generate_test_output<OutputT>() -> OutputT
     where
-        OutputT: AsBytes + FromBytes + FromZeroes + Sized + Copy,
+        OutputT: zerocopy::KnownLayout + zerocopy::IntoBytes + FromZeros + Sized + Copy,
     {
         assert!(size_of::<TestOutput>() % 16 == 0);
         *OutputT::ref_from(vec![!FILL_PATTERN; size_of::<TestOutput>() / 8].as_bytes()).unwrap()
@@ -986,7 +989,7 @@ impl TestController {
 
     fn generate_output_reps<OutRepT>(rep_count: usize) -> Vec<OutRepT>
     where
-        OutRepT: AsBytes + FromBytes + Sized + Copy,
+        OutRepT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized + Copy,
     {
         let size = rep_count * size_of::<OutRepT>();
         let pattern_count = (size + 7) / 8;
@@ -1250,10 +1253,10 @@ fn invoke_hypercall<InputT, InRepT, OutputT, OutRepT>(
     output_reps: &mut [OutRepT],
 ) -> (HypercallOutput, Control)
 where
-    InputT: AsBytes + FromBytes + Sized,
-    InRepT: AsBytes + FromBytes + Sized,
-    OutputT: AsBytes + FromBytes + Sized,
-    OutRepT: AsBytes + FromBytes + Sized,
+    InputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized,
+    InRepT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized,
+    OutputT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized,
+    OutRepT: zerocopy::KnownLayout + zerocopy::IntoBytes + Sized,
 {
     assert!(size_of::<InputT>() % 8 == 0);
     assert!(size_of::<OutputT>() % 8 == 0);

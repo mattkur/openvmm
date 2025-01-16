@@ -1679,9 +1679,9 @@ where
 /// [`ValueKind::Bytes`] value.
 ///
 /// `T` must be iterable with `u8` or `&u8`.
-pub struct AsBytes<T>(pub T);
+pub struct IntoBytes<T>(pub T);
 
-impl<T> Inspect for AsBytes<T>
+impl<T> Inspect for IntoBytes<T>
 where
     T: Clone + IntoIterator,
     Vec<u8>: Extend<T::Item>,
@@ -2149,7 +2149,7 @@ mod tests {
     use crate::adhoc_mut;
     use crate::inspect;
     use crate::update;
-    use crate::AsBytes;
+    use crate::IntoBytes;
     use crate::AtomicMut;
     use crate::Error;
     use crate::Inspect;
@@ -2555,7 +2555,7 @@ mod tests {
     #[test]
     fn test_bytes() {
         assert_eq!(
-            inspect_sync("", Some(1), &AsBytes([0xab, 0xcd, 0xef]),).to_string(),
+            inspect_sync("", Some(1), &IntoBytes([0xab, 0xcd, 0xef]),).to_string(),
             "<abcdef>"
         );
     }

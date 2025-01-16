@@ -37,7 +37,10 @@ use vmbus_channel::RawAsyncChannel;
 use vmbus_ring::RingMem;
 use vmbus_serial_protocol as protocol;
 use vmcore::save_restore::SavedStateNotSupported;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
 
 /// The error type returned by the serial device.
@@ -349,7 +352,7 @@ impl<T: RingMem + Unpin> SerialChannel<T> {
     }
 
     /// Writes to the pipe. The caller must guarantee that there is enough space.
-    fn write_pipe(&mut self, message: impl AsBytes) -> Result<(), Error> {
+    fn write_pipe(&mut self, message: impl IntoBytes) -> Result<(), Error> {
         self.channel
             .try_send(message.as_bytes())
             .map_err(Error::Io)?;

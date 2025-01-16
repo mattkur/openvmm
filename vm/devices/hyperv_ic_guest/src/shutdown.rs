@@ -31,9 +31,12 @@ use vmbus_relay_intercept_device::SimpleVmbusClientDevice;
 use vmbus_relay_intercept_device::SimpleVmbusClientDeviceAsync;
 use vmbus_ring::RingMem;
 use vmcore::save_restore::NoSavedState;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 use zerocopy_helpers::FromBytesExt;
 
 const E_FAIL: u32 = 0x80004005;
@@ -224,7 +227,7 @@ impl ShutdownGuestChannel {
         let message = hyperv_ic_protocol::NegotiateMessage {
             framework_version_count: 1,
             message_version_count: 1,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         let response = hyperv_ic_protocol::Header {
             message_type: hyperv_ic_protocol::MessageType::VERSION_NEGOTIATION,
@@ -236,7 +239,7 @@ impl ShutdownGuestChannel {
             flags: hyperv_ic_protocol::HeaderFlags::new()
                 .with_transaction(header.flags.transaction())
                 .with_response(true),
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         self.pipe
             .send_vectored(&[
@@ -298,7 +301,7 @@ impl ShutdownGuestChannel {
             flags: hyperv_ic_protocol::HeaderFlags::new()
                 .with_transaction(header.flags.transaction())
                 .with_response(true),
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         self.pipe
             .send(response.as_bytes())

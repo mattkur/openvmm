@@ -7,11 +7,14 @@
 // device.
 
 use super::Table;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::Unaligned;
 
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, AsBytes, Unaligned)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, Unaligned)]
 pub struct Aspt {
     pub num_structs: usize,
     // variable number of trailing structs
@@ -22,7 +25,7 @@ impl Table for Aspt {
 }
 
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, AsBytes)]
+#[derive(Copy, Clone, Debug, IntoBytes)]
 pub struct AsptStructHeader {
     pub type_: structs::AsptStructType,
     // length of the struct, including this header
@@ -41,12 +44,15 @@ impl AsptStructHeader {
 /// Each of these structs is prepended by a `AsptStructHeader`
 pub mod structs {
     use open_enum::open_enum;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
     use zerocopy::FromBytes;
-    use zerocopy::FromZeroes;
+    
 
     open_enum! {
-        #[derive(AsBytes, FromBytes, FromZeroes)]
+        #[derive(IntoBytes, Immutable, FromBytes)]
         pub enum AsptStructType: u16 {
             ASP_GLOBAL_REGISTERS = 0,
             SEV_MAILBOX_REGISTERS = 1,
@@ -54,12 +60,12 @@ pub mod structs {
         }
     }
 
-    pub trait AsptStruct: AsBytes {
+    pub trait AsptStruct: IntoBytes {
         const TYPE: AsptStructType;
     }
 
     #[repr(C, packed)]
-    #[derive(Copy, Clone, Debug, AsBytes)]
+    #[derive(Copy, Clone, Debug, IntoBytes)]
     pub struct AspGlobalRegisters {
         pub _reserved: u32,
         pub feature_register_address: u64,
@@ -72,7 +78,7 @@ pub mod structs {
     }
 
     #[repr(C, packed)]
-    #[derive(Copy, Clone, Debug, AsBytes)]
+    #[derive(Copy, Clone, Debug, IntoBytes)]
     pub struct SevMailboxRegisters {
         pub mailbox_interrupt_id: u8,
         pub _reserved: [u8; 3],
@@ -86,7 +92,7 @@ pub mod structs {
     }
 
     #[repr(C, packed)]
-    #[derive(Copy, Clone, Debug, AsBytes)]
+    #[derive(Copy, Clone, Debug, IntoBytes)]
     pub struct AcpiMailboxRegisters {
         pub _reserved1: u32,
         pub cmd_resp_register_address: u64,

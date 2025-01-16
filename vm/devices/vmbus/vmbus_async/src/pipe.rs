@@ -30,8 +30,11 @@ use vmbus_channel::RawAsyncChannel;
 use vmbus_ring as ring;
 use vmbus_ring::FlatRingMem;
 use vmbus_ring::RingMem;
-use zerocopy::AsBytes;
-use zerocopy::FromZeroes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
+
 
 #[derive(Debug, Error)]
 enum Error {
@@ -916,7 +919,10 @@ mod tests {
     use pal_async::DefaultDriver;
     use std::io::ErrorKind;
     use std::time::Duration;
-    use zerocopy::AsBytes;
+    use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
     #[async_test]
     async fn test_async_channel_close() {

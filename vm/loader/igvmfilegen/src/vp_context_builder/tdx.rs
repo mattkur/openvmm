@@ -12,7 +12,10 @@ use loader::importer::X86Register;
 use std::mem::offset_of;
 use x86defs::X64_EFER_LME;
 use x86defs::X86X_MSR_DEFAULT_PAT;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 
 /// Fields in the trampoline context must be loaded from memory by the
 /// trampoline code.
@@ -21,7 +24,7 @@ use zerocopy::AsBytes;
 /// the code placed in the reset vector will use this format to figure out what
 /// register state to load.
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy, AsBytes)]
+#[derive(Debug, Default, Clone, Copy, IntoBytes)]
 pub struct TdxTrampolineContext {
     start_gate: u32,
 

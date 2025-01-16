@@ -14,7 +14,10 @@ use uefi_specs::uefi::nvram::signature_list::EFI_CERT_SHA256_GUID;
 use uefi_specs::uefi::nvram::signature_list::EFI_CERT_X509_GUID;
 use uefi_specs::uefi::nvram::signature_list::EFI_SIGNATURE_DATA;
 use uefi_specs::uefi::nvram::signature_list::EFI_SIGNATURE_LIST;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy_helpers::FromBytesExt;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]

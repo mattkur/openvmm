@@ -3,17 +3,20 @@
 
 #![allow(dead_code)]
 
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+
+use zerocopy::Immutable;
 use zerocopy::BigEndian;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+
 
 pub type U32b = zerocopy::U32<BigEndian>;
 pub type U64b = zerocopy::U64<BigEndian>;
 
 /// The header for the overall FDT.
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct Header {
     pub magic: U32b,
     pub totalsize: U32b,
@@ -28,7 +31,7 @@ pub struct Header {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes, PartialEq, Eq, Clone, Copy)]
 /// A single entry in the memory reservation map, `/memreserve/`.
 pub struct ReserveEntry {
     /// The address of the reserved memory.
@@ -38,7 +41,7 @@ pub struct ReserveEntry {
 }
 
 #[repr(C)]
-#[derive(Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, IntoBytes, Immutable, FromBytes)]
 pub struct PropHeader {
     pub len: U32b,
     pub nameoff: U32b,
