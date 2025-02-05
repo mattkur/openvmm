@@ -30,6 +30,7 @@ use vmbus_channel::connected_async_channels;
 use vmbus_ring::OutgoingPacketType;
 use vmbus_ring::PAGE_SIZE;
 use xtask_fuzz::fuzz_target;
+use zerocopy::FromBytes;
 use zerocopy::FromZeros;
 use zerocopy::IntoBytes;
 
@@ -41,13 +42,13 @@ use zerocopy::IntoBytes;
 /// improve the efficiency of the search by making the packets more well
 /// formed in two ways:
 /// 1. `SendNiceReadWritePacket` will send a read or write packet, with
-///   a reasonable CDB, SRB, etc. This is likely to get to the common
-///   read / write paths.
+///    a reasonable CDB, SRB, etc. This is likely to get to the common
+///    read / write paths.
 /// 2. `SendTargetScsiOp` will send an arbitrary SRB with the correct
-///   CDB length for some SCSI operations that are particularly handled
-///   in storvsp. For example, we should quickly see `REPORT LUNS` and
-///   `INQUIRY` scsi ops, where many hours of running without this special
-///   case didn't cover those paths.
+///    CDB length for some SCSI operations that are particularly handled
+///    in storvsp. For example, we should quickly see `REPORT LUNS` and
+///    `INQUIRY` scsi ops, where many hours of running without this special
+///    case didn't cover those paths.
 #[derive(Arbitrary)]
 enum StorvspFuzzAction {
     SendNiceReadWritePacket,
@@ -91,8 +92,8 @@ fn create_targeted_scsi_packet(
             let mut bytes = vec![0; size_of::<CdbInquiry>()];
             u.fill_buffer(&mut bytes)?;
 
-            let cdb = CdbInquiry::mut_from(bytes.as_mut_slice())
-                .ok_or(arbitrary::Error::IncorrectFormat)?;
+            let cdb = CdbInquiry::mut_from_bytes(bytes.as_mut_slice())
+                .map_err(|_| arbitrary::Error::IncorrectFormat)?; // TODO: zerocopy: map_err
 
             cdb.operation_code = ScsiOp::INQUIRY;
 
@@ -102,8 +103,8 @@ fn create_targeted_scsi_packet(
             let mut bytes = vec![0; size_of::<Cdb10>()];
             u.fill_buffer(&mut bytes)?;
 
-            let cdb =
-                Cdb10::mut_from(bytes.as_mut_slice()).ok_or(arbitrary::Error::IncorrectFormat)?;
+            let cdb = Cdb10::mut_from_bytes(bytes.as_mut_slice())
+                .map_err(|_| arbitrary::Error::IncorrectFormat)?; // TODO: zerocopy: map_err
             cdb.operation_code = ScsiOp::REPORT_LUNS;
 
             scsi_req.payload[0..(bytes.len())].copy_from_slice(bytes.as_slice());
@@ -112,8 +113,8 @@ fn create_targeted_scsi_packet(
             let mut bytes = vec![0; size_of::<Cdb6ReadWrite>()];
             u.fill_buffer(&mut bytes)?;
 
-            let cdb = Cdb6ReadWrite::mut_from(bytes.as_mut_slice())
-                .ok_or(arbitrary::Error::IncorrectFormat)?;
+            let cdb = Cdb6ReadWrite::mut_from_bytes(bytes.as_mut_slice())
+                .map_err(|_| arbitrary::Error::IncorrectFormat)?; // TODO: zerocopy: map_err
 
             cdb.operation_code = ScsiOp::READ;
             cdb.transfer_blocks = (arbitrary_byte_len(u)? / 512) as u8;
@@ -124,8 +125,8 @@ fn create_targeted_scsi_packet(
             let mut bytes = vec![0; size_of::<Cdb10>()];
             u.fill_buffer(&mut bytes)?;
 
-            let cdb =
-                Cdb10::mut_from(bytes.as_mut_slice()).ok_or(arbitrary::Error::IncorrectFormat)?;
+            let cdb = Cdb10::mut_from_bytes(bytes.as_mut_slice())
+                .map_err(|_| arbitrary::Error::IncorrectFormat)?; // TODO: zerocopy: map_err
 
             cdb.operation_code = ScsiOp::READ;
             cdb.transfer_blocks = ((arbitrary_byte_len(u)? / 512) as u16).into();
@@ -136,8 +137,8 @@ fn create_targeted_scsi_packet(
             let mut bytes = vec![0; size_of::<Cdb12>()];
             u.fill_buffer(&mut bytes)?;
 
-            let cdb =
-                Cdb12::mut_from(bytes.as_mut_slice()).ok_or(arbitrary::Error::IncorrectFormat)?;
+            let cdb = Cdb12::mut_from_bytes(bytes.as_mut_slice())
+                .map_err(|_| arbitrary::Error::IncorrectFormat)?; // TODO: zerocopy: map_err
 
             cdb.operation_code = ScsiOp::READ;
             cdb.transfer_blocks = ((arbitrary_byte_len(u)? / 512) as u32).into();
@@ -148,8 +149,8 @@ fn create_targeted_scsi_packet(
             let mut bytes = vec![0; size_of::<Cdb16>()];
             u.fill_buffer(&mut bytes)?;
 
-            let cdb =
-                Cdb16::mut_from(bytes.as_mut_slice()).ok_or(arbitrary::Error::IncorrectFormat)?;
+            let cdb = Cdb16::mut_from_bytes(bytes.as_mut_slice())
+                .map_err(|_| arbitrary::Error::IncorrectFormat)?; // TODO: zerocopy: map_err
 
             cdb.operation_code = ScsiOp::READ;
             cdb.transfer_blocks = ((arbitrary_byte_len(u)? / 512) as u32).into();
