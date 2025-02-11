@@ -5,6 +5,7 @@
 
 pub mod srb;
 
+use arbitrary::Arbitrary;
 use bitfield_struct::bitfield;
 use core::fmt::Debug;
 use open_enum::open_enum;
@@ -244,6 +245,7 @@ pub struct CdbInquiry {
 
 #[bitfield(u8)]
 #[derive(IntoBytes, Immutable, KnownLayout, FromBytes)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct InquiryFlags {
     #[bits(1)]
     pub vpd: bool,
@@ -997,7 +999,7 @@ pub struct Cdb10 {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct Cdb6ReadWrite {
-    pub operation_code: ScsiOp, // 0x08, 0x0A - SCSIOP_READ, SCSIOP_WRITE
+    pub operation_code: ScsiOp, // 0x08, 0x0A - SCSIOP_READ6, SCSIOP_WRITE6
     pub logical_block: [u8; 3],
     pub transfer_blocks: u8,
     pub control: u8,

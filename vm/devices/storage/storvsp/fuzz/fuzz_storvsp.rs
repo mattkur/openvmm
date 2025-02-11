@@ -30,9 +30,13 @@ use vmbus_channel::connected_async_channels;
 use vmbus_ring::OutgoingPacketType;
 use vmbus_ring::PAGE_SIZE;
 use xtask_fuzz::fuzz_target;
+use zerocopy::byteorder::BigEndian;
+use zerocopy::byteorder::U16;
+use zerocopy::byteorder::U32;
 use zerocopy::FromBytes;
 use zerocopy::FromZeros;
 use zerocopy::IntoBytes;
+use zerocopy::Ref;
 
 /// Various fuzzer actions for storvsp. At the most generic, we expect
 /// `SendRawPacket` to be the most basic primitive: this will send a vmbus
@@ -71,28 +75,11 @@ enum FuzzOutgoingPacketType {
 /// Key SCSI operations that storvsp would handle.
 #[derive(Arbitrary)]
 enum TargetScsiOp {
-    Inquiry {
-        data: [u8; size_of::<CdbInquiry>()],
-    },
-    ReportLuns {
-        data: [u8; size_of::<Cdb10>()]
-    },
-    ReadWrite6 {
-        is_read: Option<bool>,
-        data: [u8; size_of::<Cdb6ReadWrite>()],
-    },
-    ReadWrite10 {
-        is_read: Option<bool>,
-        data: [u8; size_of::<Cdb10>()],
-    },
-    ReadWrite12 {
-        is_read: Option<bool>,
-        data: [u8; size_of::<Cdb12>()],
-    },
-    ReadWrite16 {
-        is_read: Option<bool>,
-        data: [u8; size_of::<Cdb16>()],
-    },
+    Inquiry,
+    ReadWrite6,
+    ReadWriteReportLuns10,
+    ReadWrite12,
+    ReadWrite16,
 }
 
 /// Creates an SRB with a CDB that is reasonably well formed for
@@ -103,61 +90,66 @@ fn create_targeted_scsi_packet(
 ) -> Result<protocol::ScsiRequest, arbitrary::Error> {
     let mut scsi_req: protocol::ScsiRequest = u.arbitrary()?;
 
-    let mut bytes = match op {
-        TargetScsiOp::Inquiry { data } => {
-
-            let cdb_inner = CdbInquiry::read_from_bytes(data.as_slice())
-                .map_err(|_| arbitrary::Error::IncorrectFormat)?;
-
-                cdb_inner.operation_code = ScsiOp::INQUIRY;
-
-            (cdb_inner, data.len())
+    match op {
+        TargetScsiOp::Inquiry => {
+            let cdb = Ref::into_mut(
+                Ref::<_, CdbInquiry>::from_prefix(scsi_req.payload.as_mut_slice())
+                    .map_err(|_| arbitrary::Error::IncorrectFormat)?
+                    .0,
+            );
+            cdb.operation_code = ScsiOp::INQUIRY;
+            scsi_req.cdb_length = size_of::<CdbInquiry>() as u8;
         }
-        TargetScsiOp::ReportLuns { data } => {
-            let cdb_inner = Cdb10::read_from_bytes(data.as_slice())
-                .map_err(|_| arbitrary::Error::IncorrectFormat)?;
-            cdb_inner.operation_code = ScsiOp::REPORT_LUNS;
-            
-            (cdb_inner, data.len())
+        TargetScsiOp::ReadWrite6 => {
+            let cdb = Ref::into_mut(
+                Ref::<_, Cdb6ReadWrite>::from_prefix(scsi_req.payload.as_mut_slice())
+                    .map_err(|_| arbitrary::Error::IncorrectFormat)?
+                    .0,
+            );
+            cdb.operation_code = *u.choose(&[ScsiOp::READ6, ScsiOp::WRITE6])?;
+            cdb.transfer_blocks = (arbitrary_byte_len(u)? / 512) as u8;
+            scsi_req.cdb_length = size_of::<Cdb6ReadWrite>() as u8;
         }
-        TargetScsiOp::ReadWrite6 {is_read, data }=> {
-            let cdb_inner = Cdb6ReadWrite::mut_from_bytes(data.as_mut_slice())
-                .map_err(|_| arbitrary::Error::IncorrectFormat)?;
-
-                cdb_inner.operation_code = ScsiOp::READ;
-
-            (cdb_inner, data.len())
+        TargetScsiOp::ReadWriteReportLuns10 => {
+            let cdb = Ref::into_mut(
+                Ref::<_, Cdb10>::from_prefix(scsi_req.payload.as_mut_slice())
+                    .map_err(|_| arbitrary::Error::IncorrectFormat)?
+                    .0,
+            );
+            let (op, data_in) = *u.choose(&[
+                (ScsiOp::READ, 1),
+                (ScsiOp::WRITE, 0),
+                (ScsiOp::REPORT_LUNS, 1),
+            ])?;
+            cdb.operation_code = op;
+            cdb.transfer_blocks = U16::<BigEndian>::new((arbitrary_byte_len(u)? / 512) as u16);
+            scsi_req.data_in = data_in;
+            scsi_req.cdb_length = size_of::<Cdb10>() as u8;
         }
-        TargetScsiOp::ReadWrite10 {is_read, data } => {
-            let cdb_inner = Cdb10::mut_from_bytes(data.as_mut_slice())
-                .map_err(|_| arbitrary::Error::IncorrectFormat)?;
-
-                cdb_inner.operation_code = ScsiOp::READ;
-                cdb_inner.transfer_blocks = ((arbitrary_byte_len(u)? / 512) as u16).into();
-                (cdb_inner, data.len())
-
+        TargetScsiOp::ReadWrite12 => {
+            let cdb = Ref::into_mut(
+                Ref::<_, Cdb12>::from_prefix(scsi_req.payload.as_mut_slice())
+                    .map_err(|_| arbitrary::Error::IncorrectFormat)?
+                    .0,
+            );
+            let (op, data_in) = *u.choose(&[(ScsiOp::READ12, 1), (ScsiOp::WRITE12, 0)])?;
+            cdb.operation_code = op;
+            cdb.transfer_blocks = U32::<BigEndian>::new((arbitrary_byte_len(u)? / 512) as u32);
+            scsi_req.data_in = data_in;
+            scsi_req.cdb_length = size_of::<Cdb12>() as u8;
         }
-        TargetScsiOp::ReadWrite12  {is_read, data }=> {
-             let cdb_inner = Cdb12::mut_from_bytes(bytes.as_mut_slice())
-                .map_err(|_| arbitrary::Error::IncorrectFormat)?;
-
-                cdb_inner.operation_code = ScsiOp::READ;
-                cdb_inner.transfer_blocks = ((arbitrary_byte_len(u)? / 512) as u32).into();
-
-            (cdb_inner, data.len())
+        TargetScsiOp::ReadWrite16 => {
+            let cdb = Ref::into_mut(
+                Ref::<_, Cdb16>::from_prefix(scsi_req.payload.as_mut_slice())
+                    .map_err(|_| arbitrary::Error::IncorrectFormat)?
+                    .0,
+            );
+            let (op, data_in) = *u.choose(&[(ScsiOp::READ16, 1), (ScsiOp::WRITE16, 0)])?;
+            cdb.operation_code = op;
+            cdb.transfer_blocks = U32::<BigEndian>::new((arbitrary_byte_len(u)? / 512) as u32);
+            scsi_req.data_in = data_in;
+            scsi_req.cdb_length = size_of::<Cdb16>() as u8;
         }
-        TargetScsiOp::ReadWrite16 { is_read, data } => {
-            let mut cdb_inner =
-                Cdb16::read_from_bytes(&data).map_err(|_| arbitrary::Error::IncorrectFormat)?;
-
-                cdb_inner.operation_code = ScsiOp::READ;
-                cdb_inner.transfer_blocks = ((arbitrary_byte_len(u)? / 512) as u32).into();
-            
-            (cdb_inner, data.len())
-        };
-
-        
-        scsi_req.payload[0..(bytes.len())].copy_from_slice(bytes.as_slice());
     };
 
     Ok(scsi_req)
