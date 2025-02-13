@@ -31,7 +31,7 @@ impl Cmd for CargoToml {
         let overlay_cargo_toml =
             fs_err::read_to_string(ctx.overlay_workspace.join("Cargo.xsync.toml"))?;
         let mut overlay_cargo_toml = cargo_toml::Manifest::<
-            self::custom_meta::CargoOverlayMetadata,
+            super::custom_meta::CargoOverlayMetadata,
         >::from_slice_with_metadata(
             overlay_cargo_toml.as_bytes()
         )?;
@@ -58,14 +58,11 @@ impl Cmd for CargoToml {
         // handle simple inherited Cargo.toml fields
         //
         {
-            let self::custom_meta::Inherit {
+            let super::custom_meta::Inherit {
                 profile,
                 patch,
-                workspace:
-                    self::custom_meta::InheritWorkspace {
-                        lints,
-                        rust_version,
-                    },
+                workspace: super::custom_meta::InheritWorkspace { lints, package },
+                rust_toolchain: _,
             } = meta.inherit;
 
             if profile {
@@ -76,7 +73,7 @@ impl Cmd for CargoToml {
                 cargo_toml.patch = base_cargo_toml.patch.clone();
             }
 
-            if rust_version {
+            if package {
                 if cargo_toml.workspace.as_mut().unwrap().package.is_none() {
                     cargo_toml.workspace.as_mut().unwrap().package =
                         Some(PackageTemplate::default());
@@ -88,18 +85,16 @@ impl Cmd for CargoToml {
                     .unwrap()
                     .package
                     .as_mut()
-                    .unwrap()
-                    .rust_version)
-                    .clone_from(
-                        &base_cargo_toml
-                            .workspace
-                            .as_ref()
-                            .unwrap()
-                            .package
-                            .as_ref()
-                            .unwrap()
-                            .rust_version,
-                    );
+                    .unwrap())
+                .clone_from(
+                    base_cargo_toml
+                        .workspace
+                        .as_ref()
+                        .unwrap()
+                        .package
+                        .as_ref()
+                        .unwrap(),
+                );
             }
 
             if lints {
@@ -161,33 +156,5 @@ impl Cmd for CargoToml {
         }
 
         Ok(())
-    }
-}
-
-mod custom_meta {
-    use serde::Deserialize;
-    use serde::Serialize;
-
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct CargoOverlayMetadata {
-        pub xsync: Xsync,
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct Xsync {
-        pub inherit: Inherit,
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct Inherit {
-        pub profile: bool,
-        pub patch: bool,
-        pub workspace: InheritWorkspace,
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct InheritWorkspace {
-        pub lints: bool,
-        pub rust_version: bool,
     }
 }

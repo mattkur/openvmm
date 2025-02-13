@@ -15,17 +15,21 @@ pub type Guid = guid::Guid;
 use anyhow::Context;
 use async_trait::async_trait;
 use channel_bitmap::ChannelBitmap;
+use channels::ChannelError;
 use channels::ConnectionTarget;
 pub use channels::InitiateContactRequest;
 use channels::InterruptPageError;
+use channels::MessageTarget;
 use channels::ModifyConnectionRequest;
 pub use channels::ModifyConnectionResponse;
+use channels::Notifier;
 use channels::OfferId;
 pub use channels::OfferParamsInternal;
 use channels::OpenParams;
 use channels::RestoreError;
 pub use channels::Update;
 use futures::channel::mpsc;
+use futures::channel::mpsc::SendError;
 use futures::future::OptionFuture;
 use futures::stream::SelectAll;
 use futures::FutureExt;
@@ -45,9 +49,12 @@ use pal_event::Event;
 pub use proxyintegration::ProxyIntegration;
 use ring::PAGE_SIZE;
 use std::collections::HashMap;
+use std::future;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::ready;
+use std::task::Poll;
 use unicycle::FuturesUnordered;
 use vmbus_channel::bus::ChannelRequest;
 use vmbus_channel::bus::ChannelServerRequest;
@@ -81,6 +88,7 @@ use vmcore::interrupt::Interrupt;
 use vmcore::save_restore::SavedStateRoot;
 use vmcore::synic::EventPort;
 use vmcore::synic::GuestEventPort;
+use vmcore::synic::GuestMessagePort;
 use vmcore::synic::MessagePort;
 use vmcore::synic::SynicPortAccess;
 
@@ -462,10 +470,10 @@ impl<'a, T: Spawn> VmbusServerBuilder<'a, T> {
             private_gm: self.private_gm,
             vtl: self.vtl,
             redirect_vtl,
-            message_target: ConnectionTarget {
-                vp: 0,
-                sint: redirect_sint,
-            },
+            redirect_sint,
+            message_port: self
+                .synic
+                .new_guest_message_port(redirect_vtl, 0, redirect_sint)?,
             synic: self.synic,
             hvsock_requests: 0,
             hvsock_send,
@@ -564,7 +572,7 @@ impl VmbusServer {
         driver: &(impl pal_async::driver::SpawnDriver + Clone),
         handle: ProxyHandle,
     ) -> std::io::Result<ProxyIntegration> {
-        ProxyIntegration::start(driver, handle, self.control(), &self.control.mem).await
+        ProxyIntegration::start(driver, handle, self.control(), Some(&self.control.mem)).await
     }
 
     /// Returns an object that can be used to offer channels.
@@ -616,7 +624,8 @@ struct ServerTaskInner {
     synic: Arc<dyn SynicPortAccess>,
     vtl: Vtl,
     redirect_vtl: Vtl,
-    message_target: ConnectionTarget,
+    redirect_sint: u8,
+    message_port: Box<dyn GuestMessagePort>,
     hvsock_requests: usize,
     hvsock_send: mesh::Sender<HvsockConnectRequest>,
     channels: HashMap<OfferId, Channel>,
@@ -663,7 +672,10 @@ enum ChannelState {
         monitor: Option<Box<dyn Send>>,
         host_to_guest_interrupt: Interrupt,
         guest_to_host_event: Arc<ChannelEvent>,
+        reserved_guest_message_port: Option<Box<dyn GuestMessagePort>>,
     },
+    ClosingReserved(Box<dyn GuestMessagePort>),
+    FailedOpen,
 }
 
 impl ServerTask {
@@ -684,7 +696,7 @@ impl ServerTask {
             .offer_channel(info.params)
             .context("channel offer failed")?;
 
-        let guest_event_port = self.inner.synic.new_guest_event_port();
+        let guest_event_port = self.inner.synic.new_guest_event_port()?;
 
         tracing::debug!(?offer_id, %key, "offered channel");
 
@@ -765,10 +777,17 @@ impl ServerTask {
         } else {
             protocol::STATUS_UNSUCCESSFUL
         };
-        self.inner.complete_open(offer_id, result);
-        self.server
-            .with_notifier(&mut self.inner)
-            .open_complete(offer_id, status);
+        if let Err(err) = self.inner.complete_open(offer_id, result) {
+            tracelimit::error_ratelimited!(?err, "failed to complete open");
+            // If complete_open failed, the channel is now in FailedOpen state and the device needs
+            // to notified to close it. Calling open_complete is postponed until the device responds
+            // to the close request.
+            self.inner.notify(offer_id, channels::Action::Close);
+        } else {
+            self.server
+                .with_notifier(&mut self.inner)
+                .open_complete(offer_id, status);
+        }
     }
 
     fn handle_close(&mut self, offer_id: OfferId) {
@@ -777,10 +796,49 @@ impl ServerTask {
             .channels
             .get_mut(&offer_id)
             .expect("channel still exists");
-        channel.state = ChannelState::Closed;
-        self.server
-            .with_notifier(&mut self.inner)
-            .close_complete(offer_id);
+
+        match &mut channel.state {
+            ChannelState::Open {
+                reserved_guest_message_port,
+                ..
+            } => {
+                // If the channel is reserved, the message port needs to remain available to send
+                // the closed response.
+                let mut reserved = false;
+                channel.state = if let Some(port) = reserved_guest_message_port.take() {
+                    reserved = true;
+                    ChannelState::ClosingReserved(port)
+                } else {
+                    ChannelState::Closed
+                };
+
+                self.server
+                    .with_notifier(&mut self.inner)
+                    .close_complete(offer_id);
+
+                if reserved {
+                    // Now the message port can be dropped.
+                    let channel = self
+                        .inner
+                        .channels
+                        .get_mut(&offer_id)
+                        .expect("channel still exists");
+
+                    channel.state = ChannelState::Closed;
+                }
+            }
+            ChannelState::FailedOpen => {
+                // Now that the device has processed the close request after open failed, we can
+                // finish handling the failed open and send an open result to the guest.
+                channel.state = ChannelState::Closed;
+                self.server
+                    .with_notifier(&mut self.inner)
+                    .open_complete(offer_id, protocol::STATUS_UNSUCCESSFUL);
+            }
+            _ => {
+                tracing::error!(?offer_id, "invalid close channel response");
+            }
+        };
     }
 
     fn handle_gpadl_create(&mut self, offer_id: OfferId, gpadl_id: GpadlId, ok: bool) {
@@ -808,10 +866,29 @@ impl ServerTask {
         open: Option<OpenResult>,
     ) -> anyhow::Result<RestoreResult> {
         let gpadls = self.server.channel_gpadls(offer_id);
-        let params = self
-            .server
+
+        // If the channel is opened, handle that before calling into channels so that failure can
+        // be handled before the channel is marked restored.
+        let open_request = open
+            .map(|result| -> anyhow::Result<_> {
+                let params = self.server.get_restore_open_params(offer_id)?;
+                let (_, interrupt) = self.inner.open_channel(offer_id, &params)?;
+                let channel = self.inner.complete_open(offer_id, Some(result))?;
+                Ok(OpenRequest::new(
+                    params.open_data,
+                    interrupt,
+                    self.server
+                        .get_version()
+                        .expect("must be connected")
+                        .feature_flags,
+                    channel.flags,
+                ))
+            })
+            .transpose()?;
+
+        self.server
             .with_notifier(&mut self.inner)
-            .restore_channel(offer_id, open.is_some())?;
+            .restore_channel(offer_id, open_request.is_some())?;
 
         let channel = self.inner.channels.get_mut(&offer_id).unwrap();
         for gpadl in &gpadls {
@@ -822,19 +899,6 @@ impl ServerTask {
             }
         }
 
-        let open_request = params.zip(open).map(|(params, result)| {
-            let (_, interrupt) = self.inner.open_channel(offer_id, &params);
-            let channel = self.inner.complete_open(offer_id, Some(result));
-            OpenRequest::new(
-                params.open_data,
-                interrupt,
-                self.server
-                    .get_version()
-                    .expect("must be connected")
-                    .feature_flags,
-                channel.flags,
-            )
-        });
         let result = RestoreResult {
             open_request,
             gpadls,
@@ -853,7 +917,7 @@ impl ServerTask {
             }
             VmbusRequest::Inspect(deferred) => {
                 deferred.respond(|resp| {
-                    resp.field("message_target.vp", self.inner.message_target.vp)
+                    resp.field("message_port", &self.inner.message_port)
                         .field("running", self.running)
                         .field("hvsock_requests", self.inner.hvsock_requests)
                         .field_mut_with("unstick_channels", |v| {
@@ -1151,7 +1215,7 @@ impl ServerTask {
     }
 }
 
-impl channels::Notifier for ServerTaskInner {
+impl Notifier for ServerTaskInner {
     fn notify(&mut self, offer_id: OfferId, action: channels::Action) {
         let channel = self
             .channels
@@ -1176,19 +1240,36 @@ impl channels::Notifier for ServerTaskInner {
 
         let response = match action {
             channels::Action::Open(open_params, version) => {
-                let (channel, interrupt) = self.open_channel(offer_id, &open_params);
-                handle(
-                    offer_id,
-                    channel,
-                    ChannelRequest::Open,
-                    OpenRequest::new(
-                        open_params.open_data,
-                        interrupt,
-                        version.feature_flags,
-                        channel.flags,
+                let seq = channel.seq;
+                match self.open_channel(offer_id, &open_params) {
+                    Ok((channel, interrupt)) => handle(
+                        offer_id,
+                        channel,
+                        ChannelRequest::Open,
+                        OpenRequest::new(
+                            open_params.open_data,
+                            interrupt,
+                            version.feature_flags,
+                            channel.flags,
+                        ),
+                        ChannelResponse::Open,
                     ),
-                    ChannelResponse::Open,
-                )
+                    Err(err) => {
+                        tracelimit::error_ratelimited!(
+                            err = err.as_ref() as &dyn std::error::Error,
+                            ?offer_id,
+                            "could not open channel",
+                        );
+
+                        // Return an error response to the channels module if the open_channel call
+                        // failed.
+                        Box::pin(future::ready((
+                            offer_id,
+                            seq,
+                            Ok(ChannelResponse::Open(None)),
+                        )))
+                    }
+                }
             }
             channels::Action::Close => {
                 if let Some(channel_bitmap) = self.channel_bitmap.as_ref() {
@@ -1238,25 +1319,39 @@ impl channels::Notifier for ServerTaskInner {
             channels::Action::Modify { target_vp } => {
                 if let ChannelState::Open { open_params, .. } = channel.state {
                     let (target_vtl, target_sint) = if open_params.flags.redirect_interrupt() {
-                        (self.redirect_vtl, self.message_target.sint)
+                        (self.redirect_vtl, self.redirect_sint)
                     } else {
                         (self.vtl, SINT)
                     };
 
-                    channel.guest_event_port.set(
+                    if let Err(err) = channel.guest_event_port.set(
                         target_vtl,
                         target_vp,
                         target_sint,
                         open_params.event_flag,
-                    );
-
-                    handle(
-                        offer_id,
-                        channel,
-                        ChannelRequest::Modify,
-                        ModifyRequest::TargetVp { target_vp },
-                        ChannelResponse::Modify,
-                    )
+                    ) {
+                        tracelimit::error_ratelimited!(
+                            error = &err as &dyn std::error::Error,
+                            channel = %channel.key,
+                            "could not modify channel",
+                        );
+                        let seq = channel.seq;
+                        Box::pin(async move {
+                            (
+                                offer_id,
+                                seq,
+                                Ok(ChannelResponse::Modify(protocol::STATUS_UNSUCCESSFUL)),
+                            )
+                        })
+                    } else {
+                        handle(
+                            offer_id,
+                            channel,
+                            ChannelRequest::Modify,
+                            ModifyRequest::TargetVp { target_vp },
+                            ChannelResponse::Modify,
+                        )
+                    }
                 } else {
                     unreachable!();
                 }
@@ -1273,7 +1368,7 @@ impl channels::Notifier for ServerTaskInner {
             .context("Failed to map monitor page.")?;
 
         if let Some(vp) = request.target_message_vp {
-            self.message_target.vp = vp;
+            self.message_port.set_target_vp(vp)?;
         }
 
         if request.notify_relay {
@@ -1324,11 +1419,47 @@ impl channels::Notifier for ServerTaskInner {
         }
     }
 
-    fn send_message(&mut self, message: OutgoingMessage, target: Option<ConnectionTarget>) {
-        let ConnectionTarget { vp, sint } = target.unwrap_or(self.message_target);
+    fn send_message(&mut self, message: OutgoingMessage, target: MessageTarget) {
+        let mut port_storage;
+        let port = match target {
+            MessageTarget::Default => &mut self.message_port,
+            MessageTarget::ReservedChannel(offer_id) => {
+                let channel = self
+                    .channels
+                    .get_mut(&offer_id)
+                    .expect("channel does not exist");
+                match &mut channel.state {
+                    ChannelState::Open {
+                        reserved_guest_message_port: Some(message_port),
+                        ..
+                    }
+                    | ChannelState::ClosingReserved(message_port) => message_port,
+                    _ => unreachable!("channel is not reserved"),
+                }
+            }
+            MessageTarget::Custom(target) => {
+                port_storage = match self.synic.new_guest_message_port(
+                    self.redirect_vtl,
+                    target.vp,
+                    target.sint,
+                ) {
+                    Ok(port) => port,
+                    Err(err) => {
+                        tracing::error!(
+                            ?err,
+                            ?self.redirect_vtl,
+                            ?target,
+                            "could not create message port"
+                        );
+                        return;
+                    }
+                };
+                &mut port_storage
+            }
+        };
 
-        self.synic
-            .post_message(self.redirect_vtl, vp, sint, 1, message.data());
+        const VMBUS_MESSAGE_TYPE: u32 = 1;
+        port.post_message(VMBUS_MESSAGE_TYPE, message.data());
     }
 
     fn notify_hvsock(&mut self, request: &HvsockConnectRequest) {
@@ -1346,6 +1477,35 @@ impl channels::Notifier for ServerTaskInner {
         let done = self.reset_done.take().expect("must have requested reset");
         done.complete(());
     }
+
+    fn update_reserved_channel(
+        &mut self,
+        offer_id: OfferId,
+        target: ConnectionTarget,
+    ) -> Result<(), ChannelError> {
+        let channel = self
+            .channels
+            .get_mut(&offer_id)
+            .expect("channel does not exist");
+
+        let ChannelState::Open {
+            reserved_guest_message_port,
+            ..
+        } = &mut channel.state
+        else {
+            panic!("channel is not reserved");
+        };
+
+        // Destroy the old port before creating a new one.
+        *reserved_guest_message_port = None;
+        *reserved_guest_message_port = Some(
+            self.synic
+                .new_guest_message_port(self.redirect_vtl, target.vp, target.sint)
+                .map_err(ChannelError::HypervisorError)?,
+        );
+
+        Ok(())
+    }
 }
 
 impl ServerTaskInner {
@@ -1353,7 +1513,7 @@ impl ServerTaskInner {
         &mut self,
         offer_id: OfferId,
         open_params: &OpenParams,
-    ) -> (&mut Channel, Interrupt) {
+    ) -> anyhow::Result<(&mut Channel, Interrupt)> {
         let channel = self
             .channels
             .get_mut(&offer_id)
@@ -1367,13 +1527,14 @@ impl ServerTaskInner {
             (open_params.open_data.target_vp, open_params.event_flag)
         };
         let (target_vtl, target_sint) = if open_params.flags.redirect_interrupt() {
-            (self.redirect_vtl, self.message_target.sint)
+            (self.redirect_vtl, self.redirect_sint)
         } else {
             (self.vtl, SINT)
         };
         channel
             .guest_event_port
-            .set(target_vtl, target_vp, target_sint, event_flag);
+            .set(target_vtl, target_vp, target_sint, event_flag)?;
+
         let interrupt = ChannelBitmap::create_interrupt(
             &self.channel_bitmap,
             channel.guest_event_port.interrupt(),
@@ -1391,17 +1552,23 @@ impl ServerTaskInner {
             monitor,
             host_to_guest_interrupt: interrupt.clone(),
         };
-        (channel, interrupt)
+        Ok((channel, interrupt))
     }
 
-    fn complete_open(&mut self, offer_id: OfferId, result: Option<OpenResult>) -> &mut Channel {
+    fn complete_open(
+        &mut self,
+        offer_id: OfferId,
+        result: Option<OpenResult>,
+    ) -> anyhow::Result<&mut Channel> {
         let channel = self
             .channels
             .get_mut(&offer_id)
             .expect("channel does not exist");
 
         channel.state = if let Some(result) = result {
-            match std::mem::replace(&mut channel.state, ChannelState::Closed) {
+            // The channel will be left in the FailedOpen state only if an error occurs in the match
+            // arm.
+            match std::mem::replace(&mut channel.state, ChannelState::FailedOpen) {
                 ChannelState::Opening {
                     open_params,
                     monitor,
@@ -1424,24 +1591,41 @@ impl ServerTaskInner {
                             self.vtl,
                             guest_to_host_event.clone(),
                         )
-                        .expect("connection ID should not be in use");
+                        .map_err(ChannelError::SynicError)?;
+                    // Set up a message port if this is a reserved channel.
+                    let reserved_guest_message_port =
+                        if let Some(reserved_target) = open_params.reserved_target {
+                            Some(
+                                self.synic
+                                    .new_guest_message_port(
+                                        self.redirect_vtl,
+                                        reserved_target.vp,
+                                        reserved_target.sint,
+                                    )
+                                    .map_err(ChannelError::HypervisorError)?,
+                            )
+                        } else {
+                            None
+                        };
                     ChannelState::Open {
                         open_params,
                         _event_port: event_port,
                         monitor,
                         host_to_guest_interrupt,
                         guest_to_host_event,
+                        reserved_guest_message_port,
                     }
                 }
                 s => {
                     tracing::error!("attempting to complete open of open or closed channel");
+                    // Restore the original state
                     s
                 }
             }
         } else {
             ChannelState::Closed
         };
-        channel
+        Ok(channel)
     }
 
     /// If the client specified an interrupt page, map it into host memory and
@@ -1610,16 +1794,40 @@ pub(crate) struct MessageSender {
     multiclient: bool,
 }
 
+impl MessageSender {
+    fn poll_handle_message(
+        &self,
+        cx: &mut std::task::Context<'_>,
+        msg: &[u8],
+        trusted: bool,
+    ) -> Poll<Result<(), SendError>> {
+        let mut send = self.send.clone();
+        ready!(send.poll_ready(cx))?;
+        send.start_send(SynicMessage {
+            data: msg.to_vec(),
+            multiclient: self.multiclient,
+            trusted,
+        })?;
+
+        Poll::Ready(Ok(()))
+    }
+}
+
 impl MessagePort for MessageSender {
-    fn handle_message(&self, data: &[u8], trusted: bool) -> bool {
-        self.send
-            .clone()
-            .try_send(SynicMessage {
-                data: data.to_vec(),
-                multiclient: self.multiclient,
-                trusted,
-            })
-            .is_ok()
+    fn poll_handle_message(
+        &self,
+        cx: &mut std::task::Context<'_>,
+        msg: &[u8],
+        trusted: bool,
+    ) -> Poll<()> {
+        if let Err(err) = ready!(self.poll_handle_message(cx, msg, trusted)) {
+            tracelimit::error_ratelimited!(
+                error = &err as &dyn std::error::Error,
+                "failed to send message"
+            );
+        }
+
+        Poll::Ready(())
     }
 }
 
@@ -1641,6 +1849,7 @@ impl ParentBus for VmbusServerControl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::task::noop_waker_ref;
     use pal_async::async_test;
     use parking_lot::Mutex;
     use protocol::UserDefinedData;
@@ -1648,8 +1857,11 @@ mod tests {
     use vmbus_core::protocol::ChannelId;
     use vmbus_core::protocol::VmbusMessage;
     use vmcore::synic::SynicPortAccess;
-    use zerocopy::AsBytes;
     use zerocopy::FromBytes;
+
+    use zerocopy::Immutable;
+    use zerocopy::IntoBytes;
+    use zerocopy::KnownLayout;
 
     struct MockSynicInner {
         message_port: Option<Arc<dyn MessagePort>>,
@@ -1668,21 +1880,31 @@ mod tests {
             }
         }
 
-        fn send_message(&self, msg: impl VmbusMessage + AsBytes) {
+        fn send_message(&self, msg: impl VmbusMessage + IntoBytes + Immutable + KnownLayout) {
             self.send_message_core(OutgoingMessage::new(&msg), false);
         }
 
-        fn send_message_trusted(&self, msg: impl VmbusMessage + AsBytes) {
+        fn send_message_trusted(
+            &self,
+            msg: impl VmbusMessage + IntoBytes + Immutable + KnownLayout,
+        ) {
             self.send_message_core(OutgoingMessage::new(&msg), true);
         }
 
         fn send_message_core(&self, msg: OutgoingMessage, trusted: bool) {
-            self.inner
-                .lock()
-                .message_port
-                .as_ref()
-                .unwrap()
-                .handle_message(msg.data(), trusted);
+            assert_eq!(
+                self.inner
+                    .lock()
+                    .message_port
+                    .as_ref()
+                    .unwrap()
+                    .poll_handle_message(
+                        &mut std::task::Context::from_waker(noop_waker_ref()),
+                        msg.data(),
+                        trusted,
+                    ),
+                Poll::Ready(())
+            );
         }
     }
 
@@ -1696,7 +1918,31 @@ mod tests {
 
         fn clear(&mut self) {}
 
-        fn set(&mut self, _vtl: Vtl, _vp: u32, _sint: u8, _flag: u16) {}
+        fn set(
+            &mut self,
+            _vtl: Vtl,
+            _vp: u32,
+            _sint: u8,
+            _flag: u16,
+        ) -> Result<(), vmcore::synic::HypervisorError> {
+            Ok(())
+        }
+    }
+
+    struct MockGuestMessagePort(mesh::Sender<Vec<u8>>);
+
+    impl GuestMessagePort for MockGuestMessagePort {
+        fn post_message(&mut self, _typ: u32, payload: &[u8]) {
+            self.0.send(payload.into());
+        }
+
+        fn set_target_vp(&mut self, _vp: u32) -> Result<(), vmcore::synic::HypervisorError> {
+            Ok(())
+        }
+    }
+
+    impl Inspect for MockGuestMessagePort {
+        fn inspect(&self, _req: inspect::Request<'_>) {}
     }
 
     impl SynicPortAccess for MockSynic {
@@ -1719,12 +1965,19 @@ mod tests {
             Ok(Box::new(connection_id))
         }
 
-        fn post_message(&self, _vtl: Vtl, _vp: u32, _sint: u8, _typ: u32, payload: &[u8]) {
-            self.message_send.send(payload.into());
+        fn new_guest_message_port(
+            &self,
+            _vtl: Vtl,
+            _vp: u32,
+            _sint: u8,
+        ) -> Result<Box<(dyn GuestMessagePort)>, vmcore::synic::HypervisorError> {
+            Ok(Box::new(MockGuestMessagePort(self.message_send.clone())))
         }
 
-        fn new_guest_event_port(&self) -> Box<dyn GuestEventPort> {
-            Box::new(MockGuestPort {})
+        fn new_guest_event_port(
+            &self,
+        ) -> Result<Box<(dyn GuestEventPort)>, vmcore::synic::HypervisorError> {
+            Ok(Box::new(MockGuestPort {}))
         }
 
         fn prefer_os_events(&self) -> bool {
@@ -1890,17 +2143,17 @@ mod tests {
 
         async fn expect_response(&mut self, expected: protocol::MessageType) {
             let data = self.message_recv.next().await.unwrap();
-            let header = protocol::MessageHeader::read_from_prefix(&data).unwrap();
-
+            let header = protocol::MessageHeader::read_from_prefix(&data).unwrap().0; // TODO: zerocopy: use-rest-of-range (https://github.com/microsoft/openvmm/issues/759)
             assert_eq!(expected, header.message_type())
         }
 
-        async fn get_response<T: VmbusMessage + FromBytes>(&mut self) -> T {
-            use zerocopy_helpers::FromBytesExt;
+        async fn get_response<T: VmbusMessage + FromBytes + Immutable + KnownLayout>(
+            &mut self,
+        ) -> T {
             let data = self.message_recv.next().await.unwrap();
-            let (header, message) = protocol::MessageHeader::read_from_prefix_split(&data).unwrap();
+            let (header, message) = protocol::MessageHeader::read_from_prefix(&data).unwrap(); // TODO: zerocopy: unwrap (https://github.com/microsoft/openvmm/issues/759)
             assert_eq!(T::MESSAGE_TYPE, header.message_type());
-            T::read_from_prefix(message).unwrap()
+            T::read_from_prefix(message).unwrap().0 // TODO: zerocopy: use-rest-of-range (https://github.com/microsoft/openvmm/issues/759)
         }
 
         fn initiate_contact(
@@ -1915,8 +2168,11 @@ mod tests {
                     target_message_vp: 0,
                     child_to_parent_monitor_page_gpa: 0,
                     parent_to_child_monitor_page_gpa: 0,
-                    interrupt_page_or_target_info: *protocol::TargetInfo::new(2, 0, feature_flags)
-                        .as_u64(),
+                    interrupt_page_or_target_info: protocol::TargetInfo::new()
+                        .with_sint(2)
+                        .with_vtl(0)
+                        .with_feature_flags(feature_flags.into())
+                        .into(),
                 }),
                 trusted,
             );

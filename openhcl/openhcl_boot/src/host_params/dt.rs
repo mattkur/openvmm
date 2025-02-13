@@ -461,7 +461,17 @@ impl PartitionInfo {
                 crate::cmdline::parse_boot_command_line(storage.cmdline.as_str())
                     .enable_vtl2_gpa_pool;
 
-            max(dt_page_count.unwrap_or(0), cmdline_page_count.unwrap_or(0))
+            let isolation_requirements = match params.isolation_type {
+                #[cfg(target_arch = "x86_64")]
+                // Supporting TLB flush hypercalls on TDX requires 1 page per VP
+                IsolationType::Tdx => parsed.cpus.len() as u64,
+                _ => 0,
+            };
+
+            max(
+                dt_page_count.unwrap_or(0) + isolation_requirements,
+                cmdline_page_count.unwrap_or(0),
+            )
         };
         if vtl2_gpa_pool_size != 0 {
             // Reserve the specified number of pages for the pool. Use the used
@@ -500,6 +510,11 @@ impl PartitionInfo {
             storage.vtl2_pool_memory = pool;
         }
 
+        // If we can trust the host, use the provided alias map
+        if can_trust_host {
+            storage.vtl0_alias_map = parsed.vtl0_alias_map;
+        }
+
         // Set remaining struct fields before returning.
         let Self {
             vtl2_ram: _,
@@ -520,6 +535,7 @@ impl PartitionInfo {
             memory_allocation_mode: _,
             entropy,
             vtl0_alias_map: _,
+            nvme_keepalive,
         } = storage;
 
         assert!(!vtl2_used_ranges.is_empty());
@@ -541,6 +557,7 @@ impl PartitionInfo {
         *com3_serial = parsed.com3_serial;
         *gic = parsed.gic.clone();
         *entropy = parsed.entropy.clone();
+        *nvme_keepalive = parsed.nvme_keepalive;
 
         Ok(Some(storage))
     }

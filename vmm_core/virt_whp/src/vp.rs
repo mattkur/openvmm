@@ -25,7 +25,7 @@ use virt::io::CpuIo;
 use virt::vp::AccessVpState;
 use virt::StopVp;
 use virt::VpHaltReason;
-use zerocopy::AsBytes;
+use zerocopy::IntoBytes;
 
 #[derive(Debug, Error)]
 pub enum WhpRunVpError {
@@ -234,7 +234,10 @@ impl<'a> WhpProcessor<'a> {
             self.vp
                 .whp(vtl)
                 .post_synic_message(sint, message.as_bytes())
-                .map_err(|err| err.hv_result().map_or(HvError::InvalidParameter, HvError))
+                .map_err(|err| {
+                    err.hv_result()
+                        .map_or(HvError::InvalidParameter, HvError::from)
+                })
         }
     }
 
@@ -594,8 +597,8 @@ mod x86 {
     use x86defs::apic::X2APIC_MSR_END;
     use x86defs::cpuid::CpuidFunction;
     use x86defs::X86X_MSR_APIC_BASE;
-    use zerocopy::AsBytes;
-    use zerocopy::FromZeroes;
+    use zerocopy::FromZeros;
+    use zerocopy::IntoBytes;
 
     // HACK: on certain machines, Windows booting from the PCAT BIOS spams these
     // MSRs during boot.
@@ -909,15 +912,18 @@ mod x86 {
                     == self.vp.partition.monitor_page.gpa()
                     && access.AccessInfo.AccessType() == whp::abi::WHvMemoryAccessWrite
                 {
-                    let mut state = self.emulator_state().map_err(VpHaltReason::Hypervisor)?;
+                    let guest_memory = &self.vp.partition.gm;
+                    let interruption_pending = exit.vp_context.ExecutionState.InterruptionPending();
+                    let gva_valid = access.AccessInfo.GvaValid();
+                    let access = &WhpVpRefEmulation::MemoryAccessContext(access);
+                    let mut state = emu::WhpEmulationState::new(access, self, &exit, dev);
                     if let Some(bit) = virt_support_x86emu::emulate::emulate_mnf_write_fast_path(
-                        &access.InstructionBytes[..access.InstructionByteCount as usize],
                         &mut state,
-                        exit.vp_context.ExecutionState.InterruptionPending(),
-                        access.AccessInfo.GvaValid(),
-                    ) {
-                        self.set_emulator_state(&state)
-                            .map_err(VpHaltReason::Hypervisor)?;
+                        guest_memory,
+                        dev,
+                        interruption_pending,
+                        gva_valid,
+                    )? {
                         if let Some(connection_id) = self.vp.partition.monitor_page.write_bit(bit) {
                             self.signal_mnf(dev, connection_id);
                         }
@@ -968,7 +974,7 @@ mod x86 {
                         deliverable_type: hvdef::HvX64PendingInterruptionType(
                             info.DeliverableType.0 as u8,
                         ),
-                        ..FromZeroes::new_zeroed()
+                        ..FromZeros::new_zeroed()
                     };
 
                     self.vtl2_intercept(
@@ -1790,29 +1796,33 @@ mod aarch64 {
                     | HvMessageType::HvMessageTypeGpaIntercept => {
                         self.handle_memory_access(
                             dev,
-                            FromBytes::ref_from_prefix(message).unwrap(),
+                            FromBytes::ref_from_prefix(message).unwrap().0, // TODO: zerocopy: ref-from-prefix: use-rest-of-range (https://github.com/microsoft/openvmm/issues/759)
                             exit,
                         )
                         .await?;
                         &mut self.state.exits.memory
                     }
                     HvMessageType::HvMessageTypeSynicSintDeliverable => {
-                        self.handle_sint_deliverable(FromBytes::ref_from_prefix(message).unwrap());
+                        self.handle_sint_deliverable(
+                            FromBytes::ref_from_prefix(message).unwrap().0,
+                        ); // TODO: zerocopy: ref-from-prefix: use-rest-of-range (https://github.com/microsoft/openvmm/issues/759)
                         &mut self.state.exits.sint_deliverable
                     }
                     HvMessageType::HvMessageTypeHypercallIntercept => {
                         crate::hypercalls::WhpHypercallExit::handle(
                             self,
                             dev,
-                            FromBytes::ref_from_prefix(message).unwrap(),
+                            FromBytes::ref_from_prefix(message).unwrap().0, // TODO: zerocopy: ref-from-prefix: use-rest-of-range (https://github.com/microsoft/openvmm/issues/759)
                         );
                         &mut self.state.exits.hypercall
                     }
                     HvMessageType::HvMessageTypeArm64ResetIntercept => {
-                        return Err(self.handle_reset(FromBytes::ref_from_prefix(message).unwrap()));
+                        return Err(
+                            self.handle_reset(FromBytes::ref_from_prefix(message).unwrap().0)
+                        ); // TODO: zerocopy: ref-from-prefix: use-rest-of-range (https://github.com/microsoft/openvmm/issues/759)
                     }
                     reason => {
-                        return Err(VpHaltReason::Hypervisor(WhpRunVpError::UnknownExit(reason)))
+                        return Err(VpHaltReason::Hypervisor(WhpRunVpError::UnknownExit(reason)));
                     }
                 },
             };

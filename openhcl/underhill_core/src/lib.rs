@@ -9,6 +9,7 @@
 
 mod diag;
 mod dispatch;
+mod dma_manager;
 mod emuplat;
 mod get_tracing;
 mod inspect_internal;
@@ -315,7 +316,6 @@ async fn launch_workers(
         force_load_vtl0_image: opt.force_load_vtl0_image,
         nvme_vfio: opt.nvme_vfio,
         mcr: opt.mcr,
-        emulate_apic: opt.emulate_apic,
         enable_shared_visibility_pool: opt.enable_shared_visibility_pool,
         cvm_guest_vsm: opt.cvm_guest_vsm,
         halt_on_guest_halt: opt.halt_on_guest_halt,
@@ -323,6 +323,7 @@ async fn launch_workers(
         gdbstub: opt.gdbstub,
         hide_isolation: opt.hide_isolation,
         nvme_keep_alive: opt.nvme_keep_alive,
+        test_configuration: opt.test_configuration,
     };
 
     let (mut remote_console_cfg, framebuffer_access) =

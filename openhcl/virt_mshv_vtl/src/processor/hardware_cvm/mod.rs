@@ -3,6 +3,7 @@
 
 //! Common processor support for hardware-isolated partitions.
 
+pub mod apic;
 mod tlb_lock;
 
 use super::UhEmulationState;
@@ -17,6 +18,7 @@ use crate::GuestVtl;
 use crate::WakeReason;
 use guestmem::GuestMemory;
 use hv1_emulator::RequestInterrupt;
+use hv1_hypercall::HvRepResult;
 use hvdef::hypercall::HvFlushFlags;
 use hvdef::hypercall::TranslateGvaResultCode;
 use hvdef::HvCacheType;
@@ -35,7 +37,7 @@ use virt::Processor;
 use virt_support_x86emu::emulate::TranslateGvaSupport;
 use virt_support_x86emu::translate::TranslateCachingInfo;
 use virt_support_x86emu::translate::TranslationRegisters;
-use zerocopy::FromZeroes;
+use zerocopy::FromZeros;
 
 impl<T, B: HardwareIsolatedBacking> UhHypercallHandler<'_, '_, T, B> {
     pub fn hcvm_enable_partition_vtl(
@@ -139,9 +141,6 @@ impl<T, B: HardwareIsolatedBacking> UhHypercallHandler<'_, '_, T, B> {
             // sure that the lower VTL is executing at a known point, and only if
             // the higher VTL has not been enabled on any other VP because at that
             // point, the higher VTL should be orchestrating its own enablement.
-            //
-            // TODO GUEST_VSM: last_vtl currently always returns 0 (which is wrong),
-            // so for any VP outside of the BSP, this will fail
             if self.intercepted_vtl < GuestVtl::Vtl1 {
                 if vtl1_state.enabled_on_vp_count > 0 || vp_index != current_vp_index {
                     return Err(HvError::AccessDenied);
@@ -544,7 +543,6 @@ impl<T, B: HardwareIsolatedBacking> UhHypercallHandler<'_, '_, T, B> {
         // - validate the values being set, e.g. that addresses are canonical,
         //   that efer and pat make sense, etc. Similar validation is needed in
         //   the write_msr path.
-        // TODO GUEST VSM: add ApicBase register
 
         match HvX64RegisterName::from(reg.name) {
             HvX64RegisterName::VsmPartitionConfig => self.vp.set_vsm_partition_config(
@@ -709,7 +707,6 @@ impl<T, B: HardwareIsolatedBacking> UhHypercallHandler<'_, '_, T, B> {
         }
 
         // TODO GUEST VSM: interrupt rewinding
-        // TODO TDX GUEST VSM: update execution mode
     }
 }
 
@@ -723,6 +720,18 @@ impl<T: CpuIo, B: HardwareIsolatedBacking> UhHypercallHandler<'_, '_, T, B> {
         multicast: bool,
         target_processors: &[u32],
     ) -> HvResult<()> {
+        // Before dispatching retarget_device_interrupt, add the device vector
+        // to partition global device vector table and issue `proxy_irr_blocked`
+        // filter wake request to other VPs
+        self.vp.partition.request_proxy_irr_filter_update(
+            self.intercepted_vtl,
+            vector as u8,
+            self.vp.vp_index().index(),
+        );
+
+        // Update `proxy_irr_blocked` for this VP itself
+        self.vp.update_proxy_irr_filter(self.intercepted_vtl);
+
         self.vp.partition.hcl.retarget_device_interrupt(
             device_id,
             hvdef::hypercall::InterruptEntry {
@@ -734,39 +743,6 @@ impl<T: CpuIo, B: HardwareIsolatedBacking> UhHypercallHandler<'_, '_, T, B> {
             multicast,
             target_processors,
         )
-    }
-
-    pub fn hcvm_retarget_interrupt(
-        &mut self,
-        device_id: u64,
-        address: u64,
-        data: u32,
-        vector: u32,
-        multicast: bool,
-        target_processors: &[u32],
-    ) -> HvResult<()> {
-        // It is unknown whether the interrupt is physical or virtual, so try both. Note that the
-        // actual response from the hypervisor can't really be trusted so:
-        // 1. Always invoke the virtual interrupt retargeting.
-        // 2. A failure from the physical interrupt retargeting is not necessarily a sign of a
-        // malicious hypervisor or a buggy guest, since the target could simply be a virtual one.
-        let hv_result = self.retarget_physical_interrupt(
-            device_id,
-            address,
-            data,
-            vector,
-            multicast,
-            target_processors,
-        );
-        let virtual_result = self.retarget_virtual_interrupt(
-            device_id,
-            address,
-            data,
-            vector,
-            multicast,
-            target_processors,
-        );
-        hv_result.or(virtual_result)
     }
 
     pub fn hcvm_validate_flush_inputs(
@@ -802,7 +778,7 @@ impl<T, B: HardwareIsolatedBacking> hv1_hypercall::GetVpRegisters
         vtl: Option<Vtl>,
         registers: &[hvdef::HvRegisterName],
         output: &mut [hvdef::HvRegisterValue],
-    ) -> hvdef::HvRepResult {
+    ) -> HvRepResult {
         if partition_id != hvdef::HV_PARTITION_ID_SELF {
             return Err((HvError::AccessDenied, 0));
         }
@@ -823,6 +799,46 @@ impl<T, B: HardwareIsolatedBacking> hv1_hypercall::GetVpRegisters
     }
 }
 
+impl<T: CpuIo, B: HardwareIsolatedBacking> hv1_hypercall::RetargetDeviceInterrupt
+    for UhHypercallHandler<'_, '_, T, B>
+{
+    fn retarget_interrupt(
+        &mut self,
+        device_id: u64,
+        address: u64,
+        data: u32,
+        params: &hv1_hypercall::HvInterruptParameters<'_>,
+    ) -> HvResult<()> {
+        let hv1_hypercall::HvInterruptParameters {
+            vector,
+            multicast,
+            target_processors,
+        } = *params;
+        // It is unknown whether the interrupt is physical or virtual, so try both. Note that the
+        // actual response from the hypervisor can't really be trusted so:
+        // 1. Always invoke the virtual interrupt retargeting.
+        // 2. A failure from the physical interrupt retargeting is not necessarily a sign of a
+        // malicious hypervisor or a buggy guest, since the target could simply be a virtual one.
+        let hv_result = self.retarget_physical_interrupt(
+            device_id,
+            address,
+            data,
+            vector,
+            multicast,
+            target_processors,
+        );
+        let virtual_result = self.retarget_virtual_interrupt(
+            device_id,
+            address,
+            data,
+            vector,
+            multicast,
+            target_processors,
+        );
+        hv_result.or(virtual_result)
+    }
+}
+
 impl<T, B: HardwareIsolatedBacking> hv1_hypercall::SetVpRegisters
     for UhHypercallHandler<'_, '_, T, B>
 {
@@ -832,7 +848,7 @@ impl<T, B: HardwareIsolatedBacking> hv1_hypercall::SetVpRegisters
         vp_index: u32,
         vtl: Option<Vtl>,
         registers: &[hvdef::hypercall::HvRegisterAssoc],
-    ) -> hvdef::HvRepResult {
+    ) -> HvRepResult {
         if partition_id != hvdef::HV_PARTITION_ID_SELF {
             return Err((HvError::AccessDenied, 0));
         }
@@ -934,6 +950,45 @@ impl<T, B: HardwareIsolatedBacking> hv1_hypercall::VtlReturn for UhHypercallHand
     }
 }
 
+impl<T, B: HardwareIsolatedBacking>
+    hv1_hypercall::StartVirtualProcessor<hvdef::hypercall::InitialVpContextX64>
+    for UhHypercallHandler<'_, '_, T, B>
+{
+    fn start_virtual_processor(
+        &mut self,
+        partition_id: u64,
+        target_vp: u32,
+        target_vtl: Vtl,
+        vp_context: &hvdef::hypercall::InitialVpContextX64,
+    ) -> HvResult<()> {
+        tracing::debug!(
+            vp_index = self.vp.vp_index().index(),
+            target_vp,
+            ?target_vtl,
+            "HvStartVirtualProcessor"
+        );
+
+        if partition_id != hvdef::HV_PARTITION_ID_SELF {
+            return Err(HvError::InvalidPartitionId);
+        }
+
+        if target_vp == self.vp.vp_index().index()
+            || target_vp as usize >= self.vp.partition.vps.len()
+        {
+            return Err(HvError::InvalidVpIndex);
+        }
+
+        let target_vtl = self.target_vtl_no_higher(target_vtl)?;
+        let target_vp = &self.vp.partition.vps[target_vp as usize];
+
+        // TODO CVM GUEST VSM: probably some validation on vtl1_enabled
+        *target_vp.hv_start_enable_vtl_vp[target_vtl].lock() = Some(Box::new(*vp_context));
+        target_vp.wake(target_vtl, WakeReason::HV_START_ENABLE_VP_VTL);
+
+        Ok(())
+    }
+}
+
 impl<T, B: HardwareIsolatedBacking> hv1_hypercall::ModifyVtlProtectionMask
     for UhHypercallHandler<'_, '_, T, B>
 {
@@ -943,7 +998,7 @@ impl<T, B: HardwareIsolatedBacking> hv1_hypercall::ModifyVtlProtectionMask
         map_flags: HvMapGpaFlags,
         target_vtl: Option<Vtl>,
         gpa_pages: &[u64],
-    ) -> hvdef::HvRepResult {
+    ) -> HvRepResult {
         if partition_id != hvdef::HV_PARTITION_ID_SELF {
             return Err((HvError::AccessDenied, 0));
         }
@@ -1043,10 +1098,7 @@ impl<T, B: HardwareIsolatedBacking> hv1_hypercall::TranslateVirtualAddressX64
                 // description. However, for full correctness this should be
                 // extended to check for all overlay pages.
                 let overlay_page = hvdef::hypercall::MsrHypercallContents::from(
-                    self.vp
-                        .backing
-                        .hv(target_vtl)
-                        .expect("has an hv emulator")
+                    self.vp.backing.cvm_state_mut().hv[target_vtl]
                         .msr_read(hvdef::HV_X64_MSR_HYPERCALL)
                         .unwrap(),
                 )
@@ -1204,6 +1256,34 @@ impl<B: HardwareIsolatedBacking> UhProcessor<'_, B> {
         }
 
         Ok(reprocessing_required)
+    }
+
+    pub(crate) fn hcvm_handle_vp_start_enable_vtl(
+        &mut self,
+        vtl: GuestVtl,
+    ) -> Result<(), UhRunVpError> {
+        if let Some(context) = self.inner.hv_start_enable_vtl_vp[vtl].lock().take() {
+            tracing::debug!(
+                vp_index = self.inner.cpu_index,
+                ?vtl,
+                "starting vp with initial registers"
+            );
+            hv1_emulator::hypercall::set_x86_vp_context(
+                &mut self.access_state(vtl.into()),
+                &context,
+            )
+            .map_err(UhRunVpError::State)?;
+
+            if vtl == GuestVtl::Vtl1 {
+                assert!(self.partition.isolation.is_hardware_isolated());
+                // Should have already initialized the hv emulator for this vtl
+                assert!(self.backing.hv(vtl).is_some());
+
+                // TODO CVM GUEST VSM: Revisit during AP startup if we need to exit to VTL 1 here
+            }
+        }
+
+        Ok(())
     }
 
     fn get_vsm_vp_secure_config_vtl(
