@@ -27,6 +27,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering::Relaxed;
 use std::time::Duration;
+use tracing::Instrument;
 use uevent::UeventListener;
 use vfio_bindings::bindings::vfio::VFIO_PCI_CONFIG_REGION_INDEX;
 use vfio_sys::IommuType;
@@ -99,7 +100,10 @@ impl VfioDevice {
             uevent_listener.wait_for_matching_child(&vfio_arrived_path, async |_, _| Some(()));
         let mut ctx = mesh::CancelContext::new().with_timeout(Duration::from_secs(1));
         // Ignore any errors and always attempt to open.
-        let _ = ctx.until_cancelled(wait_for_vfio_device).await;
+        let _ = ctx
+            .until_cancelled(wait_for_vfio_device)
+            .instrument(tracing::info_span!("wait_for_vfio_device", vfio_arrived_path = %vfio_arrived_path.display()))
+            .await;
 
         let container = vfio_sys::Container::new()?;
         let group_id = vfio_sys::Group::find_group_for_device(&path)?;
