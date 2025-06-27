@@ -551,6 +551,24 @@ pub fn set_vmbus_redirect(vmid: &Guid, ps_mod: &Path, enable: bool) -> anyhow::R
     .context("set_vmbus_redirect")
 }
 
+/// Runs Restart-OpenHCL, which will perform and OpenHCL servicing operation.
+pub fn run_restart_openhcl(vmid: &Guid, ps_mod: &Path) -> anyhow::Result<()> {
+    run_cmd(
+        PowerShellBuilder::new()
+            .cmdlet("Import-Module")
+            .positional(ps_mod)
+            .next()
+            .cmdlet("Get-VM")
+            .arg("Id", vmid)
+            .pipeline()
+            .cmdlet("Restart-OpenHCL")
+            .finish()
+            .build(),
+    )
+    .map(|_| ())
+    .context("restart_openhcl")
+}
+
 /// Windows event log as retrieved by `run_get_winevent`
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]

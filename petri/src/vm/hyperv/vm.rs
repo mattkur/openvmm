@@ -426,6 +426,11 @@ impl HyperVVM {
     pub fn set_vmbus_redirect(&self, enable: bool) -> anyhow::Result<()> {
         powershell::set_vmbus_redirect(&self.vmid, &self.ps_mod, enable)
     }
+
+    /// Runs Restart-OpenHCL, which will perform and OpenHCL servicing operation.
+    pub fn run_restart_openhcl(&self) -> anyhow::Result<()> {
+        powershell::run_restart_openhcl(&self.vmid, &self.ps_mod)
+    }
 }
 
 impl Drop for HyperVVM {

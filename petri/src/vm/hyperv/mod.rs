@@ -195,6 +195,15 @@ impl PetriVm for PetriVmHyperV {
     async fn send_enlightened_shutdown(&mut self, kind: ShutdownKind) -> anyhow::Result<()> {
         Self::send_enlightened_shutdown(self, kind).await
     }
+
+    async fn restart_openhcl(
+        &mut self,
+        _new_openhcl: &ResolvedArtifact<impl petri_artifacts_common::tags::IsOpenhclIgvm>,
+        _flags: OpenHclServicingFlags,
+        // TODO: deal with flags
+    ) -> anyhow::Result<()> {
+        Self::restart_openhcl(self).await
+    }
 }
 
 /// Artifacts needed to create a [`PetriVmConfigHyperV`].
@@ -689,6 +698,10 @@ impl PetriVmHyperV {
         }
 
         Ok(())
+    }
+
+    pub async fn restart_openhcl(&mut self) -> anyhow::Result<()> {
+        self.vm.run_restart_openhcl().await
     }
 
     async fn wait_for_agent_core(&self, set_high_vtl: bool) -> anyhow::Result<PipetteClient> {

@@ -143,6 +143,12 @@ pub trait PetriVm: Send {
     async fn wait_for_boot_event(&mut self) -> anyhow::Result<FirmwareEvent>;
     /// Instruct the guest to shutdown via the Hyper-V shutdown IC.
     async fn send_enlightened_shutdown(&mut self, kind: ShutdownKind) -> anyhow::Result<()>;
+    /// Instruct the OpenHCL to restart the VTL2 paravisor. Will fail if the VM is not running OpenHCL. Will also fail if the VM is not running.
+    async fn restart_openhcl(
+        &mut self,
+        new_openhcl: &ResolvedArtifact<impl petri_artifacts_common::tags::IsOpenhclIgvm>,
+        flags: OpenHclServicingFlags,
+    ) -> anyhow::Result<()>;
 }
 
 /// Firmware to load into the test VM.
