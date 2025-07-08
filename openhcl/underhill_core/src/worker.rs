@@ -67,6 +67,7 @@ use firmware_uefi::UefiCommandSet;
 use futures::executor::block_on;
 use futures::future::join_all;
 use futures_concurrency::future::Race;
+use futures_concurrency::future::RaceOk;
 use get_protocol::EventLogId;
 use get_protocol::RegisterState;
 use get_protocol::TripleFaultType;
@@ -717,7 +718,7 @@ impl UhVmNetworkSettings {
                     .iter_mut()
                     .map(|endpoint| endpoint.wait_for_endpoint_action())
                     .collect::<Vec<_>>()
-                    .race()
+                    .race_ok()
                     .await;
             }
         };
