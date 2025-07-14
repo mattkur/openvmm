@@ -37,6 +37,8 @@ flowey_request! {
         pub pre_run_deps: Vec<ReadVar<SideEffect>>,
         /// Results of running the tests
         pub results: WriteVar<TestResults>,
+        /// WPR trace file output (if tracing was enabled and successful)
+        pub wpr_trace_file: Option<WriteVar<Option<PathBuf>>>,
     }
 }
 
@@ -47,6 +49,7 @@ impl SimpleFlowNode for Node {
 
     fn imports(ctx: &mut ImportCtx<'_>) {
         ctx.import::<crate::run_cargo_nextest_run::Node>();
+        ctx.import::<crate::wpr_session_manager::Node>();
     }
 
     fn process_request(request: Self::Request, ctx: &mut NodeCtx<'_>) -> anyhow::Result<()> {
@@ -61,6 +64,7 @@ impl SimpleFlowNode for Node {
             extra_env,
             mut pre_run_deps,
             results,
+            wpr_trace_file,
         } = request;
 
         if !matches!(ctx.backend(), FlowBackend::Local)
@@ -76,6 +80,18 @@ impl SimpleFlowNode for Node {
                 })
             });
         }
+
+        // Set up WPR tracing session
+        let wpr_ready = ctx.reqv(|v| crate::wpr_session_manager::Request {
+            session_name: "vmm_tests".to_string(),
+            extra_env: extra_env.clone(),
+            pre_run_deps: pre_run_deps.clone(),
+            trace_file: wpr_trace_file,
+            wpr_ready: v,
+        });
+
+        // Add WPR ready as a dependency for the test run
+        pre_run_deps.push(wpr_ready);
 
         let nextest_archive = nextest_archive_file.map(ctx, |x| x.archive_file);
 

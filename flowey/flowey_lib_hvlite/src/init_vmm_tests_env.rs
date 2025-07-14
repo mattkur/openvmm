@@ -364,6 +364,9 @@ impl SimpleFlowNode for Node {
                     log::debug!("contains: {:?}", entry.file_name());
                 }
 
+                // Add WPR tracing environment variables
+                crate::wpr_tracing::add_wpr_env_vars(&mut env, &test_log_dir);
+
                 rt.write(get_env, &env);
 
                 if let Some(var) = get_test_log_path {

@@ -764,6 +764,7 @@ impl SimpleFlowNode for Node {
         } else {
             side_effects.push(ctx.reqv(crate::install_vmm_tests_deps::Request::Install));
 
+            let wpr_trace_file = None; // Don't use WPR tracing in this context
             let results = ctx.reqv(|v| crate::test_nextest_vmm_tests_archive::Request {
                 nextest_archive_file: ReadVar::from_static(NextestVmmTestsArchive {
                     archive_file: nextest_archive_file,
@@ -777,6 +778,7 @@ impl SimpleFlowNode for Node {
                 extra_env,
                 pre_run_deps: side_effects,
                 results: v,
+                wpr_trace_file,
             });
 
             let junit_xml = results.map(ctx, |r| r.junit_xml);
