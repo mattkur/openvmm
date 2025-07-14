@@ -163,3 +163,14 @@ the same test body to be run in a variety of scenarios, with different guest
 operating systems, firmwares, and VMMs (including Hyper-V, which is useful
 for testing certain OpenHCL features that aren't supported when using 
 OpenVMM as the host VMM).
+
+## Advanced Features
+
+### WPR Tracing
+
+VMM tests support automatic collection of WPR (Windows Performance Record) ETL traces for debugging and performance analysis. See the [WPR Tracing Guide](vmm/wpr_tracing.md) for detailed information on:
+
+- Enabling WPR tracing via environment variables
+- Using embedded vs custom WPR profiles
+- Collecting ETL files as test artifacts
+- CI/CD integration and best practices
