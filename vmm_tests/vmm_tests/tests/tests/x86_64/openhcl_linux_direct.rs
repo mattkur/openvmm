@@ -21,6 +21,7 @@ use nvme_resources::NamespaceDefinition;
 use nvme_resources::NvmeControllerHandle;
 use petri::OpenHclServicingFlags;
 use petri::PetriVmBuilder;
+use petri::ProcessorTopology;
 use petri::ResolvedArtifact;
 use petri::openvmm::OpenVmmPetriBackend;
 use petri::pipette::PipetteClient;
@@ -172,6 +173,10 @@ async fn many_nvme_devices_servicing(
     const NSID_OFFSET: u32 = 0x10;
 
     let (mut vm, agent) = config
+        .with_processor_topology(ProcessorTopology {
+            vp_count: 10,
+            ..Default::default()
+        })
         .with_vmbus_redirect(true)
         .modify_backend(|b| {
             b.with_custom_config(|c| {
