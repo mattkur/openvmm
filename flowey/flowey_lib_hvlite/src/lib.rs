@@ -55,3 +55,5 @@ pub mod run_igvmfilegen;
 pub mod run_split_debug_info;
 pub mod test_nextest_unit_tests_archive;
 pub mod test_nextest_vmm_tests_archive;
+pub mod wpr_session_manager;
+pub mod wpr_tracing;
