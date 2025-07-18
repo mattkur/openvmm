@@ -40,6 +40,7 @@ use pci_core::spec::hwid::HardwareIds;
 use pci_core::spec::hwid::ProgrammingInterface;
 use pci_core::spec::hwid::Subclass;
 use std::sync::Arc;
+use std::time::Duration;
 use vmcore::device_state::ChangeDeviceState;
 use vmcore::save_restore::SaveError;
 use vmcore::save_restore::SaveRestore;
@@ -58,6 +59,8 @@ pub struct NvmeController {
     qe_sizes: Arc<Mutex<IoQueueEntrySizes>>,
     #[inspect(flatten, mut)]
     workers: NvmeWorkers,
+    #[inspect(skip)]
+    driver_source: VmTaskDriverSource,
 }
 
 #[derive(Inspect)]
@@ -161,6 +164,7 @@ impl NvmeController {
             registers: RegState::new(),
             workers: admin,
             qe_sizes,
+            driver_source: driver_source.clone(),
         }
     }
 
@@ -374,6 +378,12 @@ impl NvmeController {
                     self.registers.aqa.acqs_z().max(1) + 1,
                 );
             } else if self.registers.csts.rdy() {
+                // *** DO NOT MERGE ***
+                tracing::warn!("***** DELAY CC.EN DISABLE BEGIN *****");
+                std::thread::sleep(Duration::from_millis(500));
+                //PolledTimer::new(&self.driver_source.simple()).sleep(Duration::from_millis(500));
+                tracing::warn!("***** DELAY CC.EN DISABLE END *****");
+
                 self.workers.controller_reset();
             } else {
                 tracelimit::warn_ratelimited!("disabling while not ready");
@@ -427,6 +437,7 @@ impl ChangeDeviceState for NvmeController {
             registers,
             qe_sizes,
             workers,
+            driver_source: _,
         } = self;
         workers.reset().await;
         cfg_space.reset();
