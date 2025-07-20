@@ -13,6 +13,7 @@ use disk_backend::resolve::ResolveDiskParameters;
 use disk_backend::resolve::ResolvedDisk;
 use futures::StreamExt;
 use futures::TryFutureExt;
+use futures::future::join;
 use futures::future::join_all;
 use inspect::Inspect;
 use mesh::MeshPayload;
@@ -22,6 +23,7 @@ use openhcl_dma_manager::AllocationVisibility;
 use openhcl_dma_manager::DmaClientParameters;
 use openhcl_dma_manager::DmaClientSpawner;
 use openhcl_dma_manager::LowerVtlPermissionPolicy;
+use pal::unix::affinity;
 use pal_async::task::Spawn;
 use pal_async::task::Task;
 use std::collections::HashMap;
@@ -105,6 +107,7 @@ impl NvmeManager {
             save_restore_supported,
             is_isolated,
             dma_client_spawner,
+            last_cpu_for_enable: None,
         };
         let task = driver.spawn("nvme-manager", async move {
             // Restore saved data (if present) before async worker thread runs.
@@ -194,10 +197,16 @@ impl NvmeManagerClient {
         pci_id: String,
         nsid: u32,
     ) -> anyhow::Result<nvme_driver::Namespace> {
+        let start_proc = affinity::get_cpu_number();
         Ok(self
             .sender
             .call(Request::GetNamespace, (pci_id.clone(), nsid))
-            .instrument(tracing::info_span!("nvme_get_namespace", pci_id, nsid))
+            .instrument(tracing::info_span!(
+                "nvme_get_namespace",
+                pci_id,
+                nsid,
+                start_proc
+            ))
             .await
             .context("nvme manager is shut down")??)
     }
@@ -224,6 +233,13 @@ struct NvmeManagerWorker {
     is_isolated: bool,
     #[inspect(skip)]
     dma_client_spawner: DmaClientSpawner,
+    /// The last CPU that was used to enable an nvme device.
+    /// This is a workaround for host devices that block during enable.
+    ///
+    /// We're making an assumption that multiple devices in the same
+    /// environment will be started in close time proximity, so
+    /// there's a chance that the last CPU is still blocked.
+    last_cpu_for_enable: Option<u32>,
 }
 
 impl NvmeManagerWorker {
@@ -283,16 +299,44 @@ impl NvmeManagerWorker {
         if !nvme_keepalive || !self.save_restore_supported {
             async {
                 // Spawn each driver shutdown in a separate thread to prevent blocking
-                // the async runtime if shutdown blocks in the kernel
+                // the async runtime if shutdown blocks in the kernel or on a vmexit.
+                // This is important to prevent blocking the async runtime.
+                // Try to avoid using the same current processor first, in case an async task
+                // begins running and then stalls future scheduling.
+                // This is still best effort: theoretically any other work on another processor
+                // could block the async runtime. But, this code doesn't have visibility, so
+                // at least try...
                 let handles = self
                     .devices
                     .drain()
-                    .map(|(pci_id, driver)| {
-                        let span = tracing::info_span!("shutdown_nvme_driver", pci_id);
-                        let shutdown_driver = self.driver_source.simple();
+                    .enumerate()
+                    .map(|(index, (pci_id, driver))| {
+                        let scheduling_proc = affinity::get_cpu_number();
+                        let target_cpu = (index as u32 + scheduling_proc + 1) % self.vp_count;
+                        let span = tracing::info_span!(
+                            "shutdown_nvme_driver",
+                            pci_id,
+                            target_cpu,
+                            scheduling_proc
+                        );
+                        let shutdown_driver = self
+                            .driver_source
+                            .builder()
+                            .run_on_target(true)
+                            .target_vp(target_cpu)
+                            .build("nvme_shutdown_per_vp");
                         shutdown_driver.spawn("nvme_shutdown", async move {
                             let _entered = span.enter();
-                            driver.shutdown().await
+                            let exe_proc = affinity::get_cpu_number();
+                            driver
+                                .shutdown()
+                                .instrument(tracing::info_span!(
+                                    "shutdown_nvme_driver_inner",
+                                    pci_id,
+                                    scheduling_proc,
+                                    exe_proc
+                                ))
+                                .await
                         })
                     })
                     .collect::<Vec<_>>();
@@ -326,26 +370,67 @@ impl NvmeManagerWorker {
                     })
                     .map_err(InnerError::DmaClient)?;
 
-                let device = VfioDevice::new(&self.driver_source, entry.key(), dma_client)
-                    .instrument(tracing::info_span!("vfio_device_open", pci_id))
-                    .await
-                    .map_err(InnerError::Vfio)?;
+                // Spawn device initialization on a dedicated processor to prevent blocking
+                // the async runtime if device initialization blocks in the kernel or on a vmexit.
+                let scheduling_proc = affinity::get_cpu_number();
+                let target_cpu = match self.last_cpu_for_enable {
+                    Some(last_cpu) => (last_cpu + 1) % self.vp_count,
+                    None => (scheduling_proc + 1) % self.vp_count,
+                };
+                self.last_cpu_for_enable = Some(target_cpu);
 
-                // TODO: For now, any isolation means use bounce buffering. This
-                // needs to change when we have nvme devices that support DMA to
-                // confidential memory.
-                let driver = nvme_driver::NvmeDriver::new(
-                    &self.driver_source,
-                    self.vp_count,
-                    device,
-                    self.is_isolated,
-                )
-                .instrument(tracing::info_span!(
+                let span = tracing::info_span!(
                     "nvme_driver_init",
-                    pci_id = entry.key()
-                ))
-                .await
-                .map_err(InnerError::DeviceInitFailed)?;
+                    pci_id = entry.key(),
+                    target_cpu,
+                    scheduling_proc
+                );
+
+                let init_driver = self
+                    .driver_source
+                    .builder()
+                    .run_on_target(true)
+                    .target_vp(target_cpu)
+                    .build("nvme_init_per_vp");
+
+                let pci_id_clone = entry.key().clone();
+                let driver_source_clone = self.driver_source.clone();
+                let vp_count = self.vp_count;
+                let is_isolated = self.is_isolated;
+
+                let driver = init_driver
+                    .spawn("nvme_init", async move {
+                        let _entered = span.enter();
+                        let exe_proc = affinity::get_cpu_number();
+
+                        let device =
+                            VfioDevice::new(&driver_source_clone, &pci_id_clone, dma_client)
+                                .instrument(tracing::info_span!(
+                                    "vfio_device_open",
+                                    pci_id = pci_id_clone
+                                ))
+                                .await
+                                .map_err(InnerError::Vfio)?;
+
+                        // TODO: For now, any isolation means use bounce buffering. This
+                        // needs to change when we have nvme devices that support DMA to
+                        // confidential memory.
+                        nvme_driver::NvmeDriver::new(
+                            &driver_source_clone,
+                            vp_count,
+                            device,
+                            is_isolated,
+                        )
+                        .instrument(tracing::info_span!(
+                            "nvme_driver_init_inner",
+                            pci_id = pci_id_clone,
+                            scheduling_proc,
+                            exe_proc
+                        ))
+                        .await
+                        .map_err(InnerError::DeviceInitFailed)
+                    })
+                    .await?;
 
                 entry.insert(driver)
             }

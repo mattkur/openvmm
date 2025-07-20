@@ -342,6 +342,12 @@ impl NvmeController {
 
         if cc.en() != self.registers.cc.en() {
             if cc.en() {
+                // *** DO NOT MERGE ***
+                tracing::warn!("***** DELAY CC.EN ENABLE BEGIN *****");
+                std::thread::sleep(Duration::from_millis(500));
+                //PolledTimer::new(&self.driver_source.simple()).sleep(Duration::from_millis(500));
+                tracing::warn!("***** DELAY CC.EN ENABLE END *****");
+
                 // Some drivers will write zeros to IOSQES and IOCQES, assuming that the defaults will work.
                 if cc.iocqes() == 0 {
                     cc.set_iocqes(IOCQES);

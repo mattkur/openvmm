@@ -19,10 +19,12 @@ use hvlite_defs::config::Vtl2BaseAddressType;
 use mesh::rpc::RpcSend;
 use nvme_resources::NamespaceDefinition;
 use nvme_resources::NvmeControllerHandle;
+use petri::MemoryConfig;
 use petri::OpenHclServicingFlags;
 use petri::PetriVmBuilder;
 use petri::ProcessorTopology;
 use petri::ResolvedArtifact;
+use petri::SIZE_1_MB;
 use petri::openvmm::OpenVmmPetriBackend;
 use petri::pipette::PipetteClient;
 use petri::pipette::cmd;
@@ -178,6 +180,7 @@ async fn many_nvme_devices_servicing(
             ..Default::default()
         })
         .with_vmbus_redirect(true)
+        .with_openhcl_command_line("OPENHCL_SIDECAR=off")
         .modify_backend(|b| {
             b.with_custom_config(|c| {
                 let device_ids = (0..NUM_NVME_DEVICES)
