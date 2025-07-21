@@ -12,8 +12,6 @@ use async_trait::async_trait;
 use disk_backend::resolve::ResolveDiskParameters;
 use disk_backend::resolve::ResolvedDisk;
 use futures::StreamExt;
-use futures::TryFutureExt;
-use futures::future::join;
 use futures::future::join_all;
 use inspect::Inspect;
 use mesh::MeshPayload;
@@ -262,12 +260,159 @@ impl NvmeManagerWorker {
                     }
                 }
                 Request::GetNamespace(rpc) => {
-                    rpc.handle(async |(pci_id, nsid)| {
-                        self.get_namespace(pci_id.clone(), nsid)
-                            .map_err(|source| NamespaceError { pci_id, source })
-                            .await
-                    })
-                    .await
+                    // Handle GetNamespace requests concurrently by spawning device initialization
+                    // and namespace access as independent tasks
+                    let (pci_id, nsid) = rpc.input().clone();
+
+                    // Check if device is already initialized
+                    if let Some(driver) = self.devices.get(&pci_id) {
+                        // Device exists, spawn namespace request on dedicated processor
+                        let scheduling_proc = affinity::get_cpu_number();
+                        let target_cpu = (scheduling_proc + 1) % self.vp_count;
+                        let span = tracing::info_span!(
+                            "get_nvme_namespace_existing",
+                            pci_id,
+                            nsid,
+                            target_cpu,
+                            scheduling_proc
+                        );
+
+                        let namespace_driver = self
+                            .driver_source
+                            .builder()
+                            .run_on_target(true)
+                            .target_vp(target_cpu)
+                            .build("nvme_namespace_existing_per_vp");
+
+                        // We need to clone the driver to move it into the async block
+                        // Since NvmeDriver doesn't implement Clone, we'll extract namespace info synchronously
+                        match driver.namespace(nsid).await {
+                            Ok(namespace) => {
+                                let _ = namespace_driver.spawn(
+                                    "nvme_get_namespace_existing",
+                                    async move {
+                                        let _entered = span.enter();
+                                        let exe_proc = affinity::get_cpu_number();
+
+                                        // The namespace is already created, just complete the RPC
+                                        tracing::info!(
+                                            pci_id,
+                                            nsid,
+                                            scheduling_proc,
+                                            exe_proc,
+                                            "namespace access from existing device"
+                                        );
+
+                                        rpc.complete(Ok(namespace));
+                                    },
+                                );
+                            }
+                            Err(source) => {
+                                rpc.complete(Err(NamespaceError {
+                                    pci_id,
+                                    source: InnerError::Namespace { nsid, source },
+                                }));
+                            }
+                        }
+                    } else {
+                        // Device doesn't exist, spawn full initialization + namespace access
+                        let scheduling_proc = affinity::get_cpu_number();
+                        let target_cpu = match self.last_cpu_for_enable {
+                            Some(last_cpu) => (last_cpu + 1) % self.vp_count,
+                            None => (scheduling_proc + 1) % self.vp_count,
+                        };
+                        self.last_cpu_for_enable = Some(target_cpu);
+
+                        let span = tracing::info_span!(
+                            "init_and_get_nvme_namespace",
+                            pci_id,
+                            nsid,
+                            target_cpu,
+                            scheduling_proc
+                        );
+
+                        let init_namespace_driver = self
+                            .driver_source
+                            .builder()
+                            .run_on_target(true)
+                            .target_vp(target_cpu)
+                            .build("nvme_init_namespace_per_vp");
+
+                        let driver_source_clone = self.driver_source.clone();
+                        let vp_count = self.vp_count;
+                        let is_isolated = self.is_isolated;
+                        let dma_client_spawner = self.dma_client_spawner.clone();
+                        let save_restore_supported = self.save_restore_supported;
+
+                        let _ = init_namespace_driver.spawn(
+                            "nvme_init_and_get_namespace",
+                            async move {
+                                let _entered = span.enter();
+                                let exe_proc = affinity::get_cpu_number();
+
+                                // Initialize the device
+                                let result = async {
+                                    let dma_client = dma_client_spawner
+                                        .new_client(DmaClientParameters {
+                                            device_name: format!("nvme_{}", pci_id),
+                                            lower_vtl_policy: LowerVtlPermissionPolicy::Any,
+                                            allocation_visibility: if is_isolated {
+                                                AllocationVisibility::Shared
+                                            } else {
+                                                AllocationVisibility::Private
+                                            },
+                                            persistent_allocations: save_restore_supported,
+                                        })
+                                        .map_err(InnerError::DmaClient)?;
+
+                                    let device =
+                                        VfioDevice::new(&driver_source_clone, &pci_id, dma_client)
+                                            .instrument(tracing::info_span!(
+                                                "vfio_device_open",
+                                                pci_id = pci_id.clone()
+                                            ))
+                                            .await
+                                            .map_err(InnerError::Vfio)?;
+
+                                    let driver = nvme_driver::NvmeDriver::new(
+                                        &driver_source_clone,
+                                        vp_count,
+                                        device,
+                                        is_isolated,
+                                    )
+                                    .instrument(tracing::info_span!(
+                                        "nvme_driver_init_inner",
+                                        pci_id = pci_id.clone(),
+                                        scheduling_proc,
+                                        exe_proc
+                                    ))
+                                    .await
+                                    .map_err(InnerError::DeviceInitFailed)?;
+
+                                    // Get the namespace
+                                    driver
+                                        .namespace(nsid)
+                                        .instrument(tracing::info_span!(
+                                            "get_nvme_namespace_after_init",
+                                            pci_id = pci_id.clone(),
+                                            nsid,
+                                            scheduling_proc,
+                                            exe_proc
+                                        ))
+                                        .await
+                                        .map_err(|source| InnerError::Namespace { nsid, source })
+                                }
+                                .await;
+
+                                let final_result = result.map_err(|source| NamespaceError {
+                                    pci_id: pci_id.clone(),
+                                    source,
+                                });
+
+                                rpc.complete(final_result);
+                            },
+                        );
+                    }
                 }
                 // Request to save worker data for servicing.
                 Request::Save(rpc) => {
@@ -436,18 +581,6 @@ impl NvmeManagerWorker {
             }
         };
         Ok(driver)
-    }
-
-    async fn get_namespace(
-        &mut self,
-        pci_id: String,
-        nsid: u32,
-    ) -> Result<nvme_driver::Namespace, InnerError> {
-        let driver = self.get_driver(pci_id.to_owned()).await?;
-        driver
-            .namespace(nsid)
-            .await
-            .map_err(|source| InnerError::Namespace { nsid, source })
     }
 
     /// Saves NVMe device's states into buffer during servicing.
