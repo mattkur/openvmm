@@ -24,6 +24,8 @@ use openhcl_dma_manager::DmaClientSpawner;
 use openhcl_dma_manager::LowerVtlPermissionPolicy;
 use pal_async::task::Spawn;
 use pal_async::task::Task;
+use parking_lot::Mutex;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::collections::hash_map;
 use std::sync::Arc;
@@ -220,8 +222,20 @@ impl NvmeManagerClient {
 struct NvmeManagerWorker {
     #[inspect(skip)]
     driver_source: VmTaskDriverSource,
-    #[inspect(iter_by_key)]
-    devices: HashMap<String, nvme_driver::NvmeDriver<VfioDevice>>,
+    /// Map of NVMe devices, indexed by their PCI ID. While the `NvmeDriver` objects themselves are
+    /// removed from this map, the entries in the map are never deleted for the lifetime of this
+    /// process. That is: the OpenHCL NVMe manager supports controller _add_, but not _remove_
+    /// (namespaces can come and go, but the controller itself is always present).
+    /// TODO: make sure that there is test coverage for namespace add/remove and controller add.
+    ///
+    /// - Outer RwLock protects the map.
+    /// - Inner Mutex protects the device handle.
+    /// - Devices are stored as `Option` to allow
+    ///   the code in `shutdown` to take the device handle.
+    ///   It is a bug if the device is `None`.
+    //#[inspect(iter_by_key)] TODO: make this work
+    #[inspect(skip)]
+    devices: Arc<RwLock<HashMap<String, Arc<Mutex<Option<nvme_driver::NvmeDriver<VfioDevice>>>>>>>,
     vp_count: u32,
     /// Running environment (memory layout) allows save/restore.
     save_restore_supported: bool,
@@ -359,9 +373,16 @@ impl NvmeManagerWorker {
                     // when memory pool allocator supports save/restore.
                     let do_not_reset = nvme_keepalive && self.save_restore_supported;
                     // Update the flag for all connected devices.
-                    for (_s, dev) in self.devices.iter_mut() {
+                    for (pci_id, dev) in self.devices.write().iter_mut() {
                         // Prevent devices from originating controller reset in drop().
-                        dev.update_servicing_flags(do_not_reset);
+                        if let Some(device) = &mut *dev.lock() {
+                            device.update_servicing_flags(do_not_reset);
+                        } else {
+                            panic!(
+                                "nvme driver not found when it was expected to for pci_id {}",
+                                pci_id
+                            );
+                        }
                     }
                     break (span, nvme_keepalive);
                 }
@@ -374,8 +395,13 @@ impl NvmeManagerWorker {
         // Tear down all the devices if nvme_keepalive is not set.
         if !nvme_keepalive || !self.save_restore_supported {
             async {
-                join_all(self.devices.drain().map(|(pci_id, driver)| {
+                // TODO: Don't double lock
+                let mut devices = self.devices.write();
+                join_all(devices.drain().map(|(pci_id, driver)| {
                     driver
+                        .into_inner()
+                        .take()
+                        .expect("nvme driver not found when it was expected to")
                         .shutdown()
                         .instrument(tracing::info_span!("shutdown_nvme_driver", pci_id))
                 }))
@@ -390,7 +416,7 @@ impl NvmeManagerWorker {
         &mut self,
         pci_id: String,
     ) -> Result<&mut nvme_driver::NvmeDriver<VfioDevice>, InnerError> {
-        let driver = match self.devices.entry(pci_id.to_owned()) {
+        let driver = match self.devices.write().entry(pci_id.to_owned()) {
             hash_map::Entry::Occupied(entry) => entry.into_mut(),
             hash_map::Entry::Vacant(entry) => {
                 let dma_client = self
@@ -420,7 +446,7 @@ impl NvmeManagerWorker {
                 )
                 .await?;
 
-                entry.insert(driver)
+                entry.insert(Some(driver))
             }
         };
         Ok(driver)
@@ -441,14 +467,18 @@ impl NvmeManagerWorker {
     /// Saves NVMe device's states into buffer during servicing.
     pub async fn save(&mut self) -> anyhow::Result<NvmeManagerSavedState> {
         let mut nvme_disks: Vec<NvmeSavedDiskConfig> = Vec::new();
-        for (pci_id, driver) in self.devices.iter_mut() {
-            nvme_disks.push(NvmeSavedDiskConfig {
-                pci_id: pci_id.clone(),
-                driver_state: driver
-                    .save()
-                    .instrument(tracing::info_span!("nvme_driver_save", %pci_id))
-                    .await?,
-            });
+        for (pci_id, driver) in self.devices.write().iter_mut() {
+            if let Some(driver) = driver.lock() {
+                nvme_disks.push(NvmeSavedDiskConfig {
+                    pci_id: pci_id.clone(),
+                    driver_state: driver
+                        .save()
+                        .instrument(tracing::info_span!("nvme_driver_save", %pci_id))
+                        .await?,
+                });
+            } else {
+                panic!("nvme driver {} not found when it was expected to", pci_id);
+            }
         }
 
         Ok(NvmeManagerSavedState {
@@ -459,7 +489,8 @@ impl NvmeManagerWorker {
 
     /// Restore NVMe manager and device states from the buffer after servicing.
     pub async fn restore(&mut self, saved_state: &NvmeManagerSavedState) -> anyhow::Result<()> {
-        self.devices = HashMap::new();
+        self.devices = Arc::new(RwLock::new(HashMap::new()));
+        let mut devices_lock = self.devices.write();
         for disk in &saved_state.nvme_disks {
             let pci_id = disk.pci_id.clone();
 
@@ -495,7 +526,7 @@ impl NvmeManagerWorker {
             .instrument(tracing::info_span!("nvme_driver_restore"))
             .await?;
 
-            self.devices.insert(disk.pci_id.clone(), nvme_driver);
+            devices_lock.insert(disk.pci_id.clone(), Arc::new(Mutex::new(Some(nvme_driver))));
         }
         Ok(())
     }
