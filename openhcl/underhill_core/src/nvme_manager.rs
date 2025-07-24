@@ -113,7 +113,6 @@ mod namespace {
             dma_client_spawner: DmaClientSpawner,
         ) -> Result<Self, InnerError> {
             // todo: dedicate a vp for each instance of this
-            // todo: deal with save/restore
             // todo: deal with inspect
             let (send, recv) = mesh::channel();
             let driver = driver_source.simple();
