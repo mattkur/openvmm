@@ -804,10 +804,8 @@ impl NvmeManagerWorker {
                 },
                 persistent_allocations: true,
             })?;
-
-            // todo (mattkur): spawn this into separate threads, since creating the driver can block
-            // will take as a future improvement.
-
+            // TODO: [keepalive] Move this to NvmeDriverManager to allow multithread.
+            //
             // This code can wait on each VFIO device until it is arrived.
             // A potential optimization would be to delay VFIO operation
             // until it is ready, but a redesign of VfioDevice is needed.
