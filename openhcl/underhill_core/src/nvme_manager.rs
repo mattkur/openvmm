@@ -81,6 +81,7 @@ mod namespace {
     }
 
     enum NvmeDriverRequest {
+        LoadDriver(Rpc<(), Result<(), InnerError>>),
         /// Get an instance of the supplied namespace (an nvme `nsid`).
         GetNamespace(Rpc<u32, Result<nvme_driver::Namespace, InnerError>>),
         Save(Rpc<(), Result<NvmeDriverSavedState, anyhow::Error>>),
@@ -117,34 +118,15 @@ mod namespace {
             let (send, recv) = mesh::channel();
             let driver = driver_source.simple();
 
-            let dma_client = dma_client_spawner
-                .new_client(DmaClientParameters {
-                    device_name: format!("nvme_{}", pci_id),
-                    lower_vtl_policy: LowerVtlPermissionPolicy::Any,
-                    allocation_visibility: if is_isolated {
-                        AllocationVisibility::Shared
-                    } else {
-                        AllocationVisibility::Private
-                    },
-                    persistent_allocations: save_restore_supported,
-                })
-                .map_err(InnerError::DmaClient)?;
-
             let mut worker = NvmeDriverManagerWorker {
                 driver_source: driver_source.clone(),
                 pci_id: pci_id.into(),
                 vp_count,
-                driver: Some(
-                    create_nvme_device(
-                        driver_source,
-                        pci_id,
-                        vp_count,
-                        nvme_always_flr,
-                        is_isolated,
-                        dma_client,
-                    )
-                    .await?,
-                ),
+                save_restore_supported,
+                nvme_always_flr,
+                is_isolated,
+                dma_client_spawner,
+                driver: None,
             };
             let task = driver.spawn("nvme-driver-manager", async move { worker.run(recv).await });
             Ok(Self {
@@ -162,10 +144,12 @@ mod namespace {
             driver_source: &VmTaskDriverSource,
             pci_id: &str,
             vp_count: u32,
+            nvme_always_flr: bool,
+            is_isolated: bool,
+            dma_client_spawner: DmaClientSpawner,
             device: nvme_driver::NvmeDriver<VfioDevice>,
         ) -> Result<Self, InnerError> {
             // todo: dedicate a vp for each instance of this
-            // todo: deal with save/restore
             // todo: deal with inspect
             let (send, recv) = mesh::channel();
             let driver = driver_source.simple();
@@ -174,6 +158,10 @@ mod namespace {
                 driver_source: driver_source.clone(),
                 pci_id: pci_id.into(),
                 vp_count,
+                save_restore_supported: true, // restored state always supports save/restore todo: assert this is correct
+                nvme_always_flr,
+                is_isolated,
+                dma_client_spawner,
                 driver: Some(device),
             };
             let task = driver.spawn("nvme-driver-manager", async move { worker.run(recv).await });
@@ -243,6 +231,16 @@ mod namespace {
                 ?)
         }
 
+        pub async fn load_driver(&self) -> Result<(), InnerError> {
+            self.sender
+                .call(NvmeDriverRequest::LoadDriver, ())
+                .instrument(tracing::info_span!(
+                    "nvme_driver_client_load_driver",
+                    pci_id = self.pci_id
+                ))
+                .await? // <-- when driver manager is already shutdown
+        }
+
         pub(in crate::nvme_manager::namespace) async fn save(
             &self,
         ) -> Result<NvmeDriverSavedState, anyhow::Error> {
@@ -267,6 +265,13 @@ mod namespace {
         driver_source: VmTaskDriverSource,
         pci_id: String,
         vp_count: u32,
+        /// Running environment (memory layout) allows save/restore.
+        save_restore_supported: bool,
+        nvme_always_flr: bool,
+        /// If this VM is isolated or not. This influences DMA client allocations.
+        is_isolated: bool,
+        #[inspect(skip)]
+        dma_client_spawner: DmaClientSpawner,
         driver: Option<nvme_driver::NvmeDriver<VfioDevice>>,
     }
 
@@ -284,6 +289,44 @@ mod namespace {
                 // Setting up a namespace should be relatively fast, only limited by the time taken
                 // to issue an `IDENTIFY NVME NAMESPACE` command.
                 match req {
+                    NvmeDriverRequest::LoadDriver(rpc) => {
+                        rpc.handle(async |_| {
+                            tracing::trace!(
+                                "nvme driver manager worker load driver {pci_id}",
+                                pci_id = self.pci_id
+                            );
+
+                            assert!(self.driver.is_none(), "nvme driver manager worker load driver called while driver is already loaded");
+
+                            // TODO(mattkur): Consider using proper error handling instead of assert!
+                            // This could panic in production if called incorrectly.
+                            let dma_client = self.dma_client_spawner
+                                .new_client(DmaClientParameters {
+                                    device_name: format!("nvme_{}", self.pci_id),
+                                    lower_vtl_policy: LowerVtlPermissionPolicy::Any,
+                                    allocation_visibility: if self.is_isolated {
+                                        AllocationVisibility::Shared
+                                    } else {
+                                        AllocationVisibility::Private
+                                    },
+                                    persistent_allocations: self.save_restore_supported,
+                                })
+                                .map_err(InnerError::DmaClient)?;
+
+                            let driver = create_nvme_device(
+                                &self.driver_source,
+                                &self.pci_id,
+                                self.vp_count,
+                                self.nvme_always_flr,
+                                self.is_isolated,
+                                dma_client,
+                            ).await?;
+                            self.driver = Some(driver);
+
+                            Ok(())
+                        })
+                        .await
+                    }
                     NvmeDriverRequest::GetNamespace(rpc) => {
                         tracing::trace!(
                             "nvme driver manager worker get namespace {nsid} {pci_id}",
@@ -291,6 +334,8 @@ mod namespace {
                             nsid = rpc.input().clone()
                         );
                         rpc.handle(async |nsid| {
+                            // TODO(mattkur): Replace unwrap() with proper error handling
+                            // This can panic if driver is None during shutdown race condition
                             self.driver
                                 .as_ref()
                                 .unwrap() // todo
@@ -302,6 +347,8 @@ mod namespace {
                     }
                     NvmeDriverRequest::Save(rpc) => {
                         tracing::trace!("nvme driver manager save {pci_id}", pci_id = self.pci_id);
+                        // TODO(mattkur): Replace unwrap() with proper error handling
+                        // This can panic if driver is None during shutdown race condition
                         rpc.handle(async |()| self.driver.as_mut().unwrap().save().await)
                             .await
                     }
@@ -635,7 +682,9 @@ impl NvmeManagerWorker {
                     span,
                     nvme_keepalive,
                 } => {
-                    // todo: locking
+                    // TODO(mattkur): Add proper locking mechanism here for multi-threading support
+                    // Currently this is a single-threaded operation but needs synchronization
+                    // when devices HashMap becomes concurrent
                     break (span, nvme_keepalive);
                 }
             }
@@ -654,6 +703,8 @@ impl NvmeManagerWorker {
         // need to be told to not reset.
         async {
             join_all(self.devices.iter_mut().map(|(_pci_id, driver)| {
+                // TODO(mattkur): Handle graceful shutdown when driver is already removed
+                // This unwrap can panic during concurrent access or double shutdown
                 driver
                     .take()
                     .unwrap() // todo: handle gracefully (race against driver remove here ...)
@@ -685,13 +736,23 @@ impl NvmeManagerWorker {
                     self.dma_client_spawner.clone(),
                 )
                 .instrument(
-                    tracing::info_span!("create_nvme_device", %pci_id, self.nvme_always_flr),
+                    tracing::info_span!("create_nvme_driver_manager", %pci_id, self.nvme_always_flr),
                 )
                 .await?;
+
+                driver
+                    .client()
+                    .load_driver()
+                    .instrument(
+                        tracing::info_span!("create_nvme_device", %pci_id, self.nvme_always_flr),
+                    )
+                    .await?;
 
                 entry.insert(Some(driver))
             }
         };
+        // TODO(mattkur): Replace unwrap() with proper error handling for production safety
+        // This can panic if driver creation failed but entry was still inserted
         Ok(driver.as_mut().unwrap())
     }
 
@@ -712,6 +773,8 @@ impl NvmeManagerWorker {
                 pci_id: pci_id.clone(),
                 driver_state: driver
                     .as_ref()
+                    // TODO(mattkur): Replace unwrap() with proper error handling
+                    // This can panic if driver is None during save operation
                     .unwrap()
                     .save()
                     .instrument(tracing::info_span!("nvme_driver_save", %pci_id))
@@ -772,6 +835,9 @@ impl NvmeManagerWorker {
                     &self.driver_source,
                     &pci_id,
                     self.vp_count,
+                    self.nvme_always_flr,
+                    self.is_isolated,
+                    self.dma_client_spawner.clone(),
                     nvme_driver,
                 )?),
             );
