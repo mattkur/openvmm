@@ -42,9 +42,6 @@ use vm_resource::ResourceId;
 use vm_resource::ResourceResolver;
 use vm_resource::kind::DiskHandleKind;
 use vmcore::vm_task::VmTaskDriverSource;
-// REVIEW(mattkur): Remove unused import - appears to be a copy/paste error
-// TODO(mattkur): Remove unused import - this appears to be a copy/paste error
-// use x86defs::IdtEntry64;
 
 /*
 # NVMe Manager Multi-Threading Refactor - Status Report
@@ -62,7 +59,7 @@ use vmcore::vm_task::VmTaskDriverSource;
 ## 🔧 REMAINING TASKS - Final 5% (Priority Order)
 1. **🛡️ CRITICAL: Replace unwrap()/expect() calls (Lines identified in code review)**
    - Line ~370: `assert!` → proper `DriverAlreadyLoaded` error handling
-   - Line ~408: `unwrap()` in GetNamespace → `ok_or()` pattern for `DriverNotLoaded`  
+   - Line ~408: `unwrap()` in GetNamespace → `ok_or()` pattern for `DriverNotLoaded`
    - Line ~418: `unwrap()` in Save handler → proper error propagation with `anyhow::anyhow!`
    - Line ~430: `expect()` in Shutdown → graceful error handling with logging
    - **Add error variants**: `DriverAlreadyLoaded`, `DriverNotLoaded`
@@ -73,23 +70,23 @@ use vmcore::vm_task::VmTaskDriverSource;
 
 ## 📊 PROGRESS ASSESSMENT
 - **Architecture**: ✅ Complete - Clean, maintainable design achieved
-- **Thread Safety**: ✅ Complete - All Send trait issues resolved  
+- **Thread Safety**: ✅ Complete - All Send trait issues resolved
 - **Lock Management**: ✅ Complete - Production-ready patterns implemented
 - **Error Handling**: 🔧 95% complete - Just need to replace remaining panic-prone calls
 - **Code Quality**: ✅ Excellent - Follows Rust best practices and OpenVMM standards
 
-## 🎯 EXCELLENT DESIGN ACHIEVEMENTS  
+## 🎯 EXCELLENT DESIGN ACHIEVEMENTS
 - ✨ **Type Simplification**: Eliminated complex `Arc<Option<T>>` patterns
 - ✨ **Async Safety**: Clone-and-release pattern for holding locks across await points
 - ✨ **Clean Architecture**: Actor pattern with mesh RPC for inter-component communication
 - ✨ **Race Condition Handling**: Proper double-checked locking with shutdown coordination
 - ✨ **Memory Safety**: Eliminated most panic risks, just need final unwrap() cleanup
 
-## � READY FOR PRODUCTION
+## READY FOR PRODUCTION
 Once the remaining unwrap()/expect() calls are replaced with proper error handling,
 this refactor will be **100% production-ready** with:
 - Zero panic risks in normal operation
-- Thread-safe concurrent access patterns  
+- Thread-safe concurrent access patterns
 - Clean shutdown without race conditions
 - Maintainable, idiomatic Rust code
 - Full compliance with OpenVMM safety requirements
@@ -125,6 +122,7 @@ enum InnerError {
 
 mod namespace {
     use super::*;
+    use inspect::Deferred;
     use nvme_driver::NvmeDriverSavedState;
 
     #[derive(Debug, Clone)]
@@ -138,6 +136,7 @@ mod namespace {
     }
 
     enum NvmeDriverRequest {
+        Inspect(Deferred),
         LoadDriver(Rpc<(), Result<(), InnerError>>),
         /// Get an instance of the supplied namespace (an nvme `nsid`).
         GetNamespace(Rpc<u32, Result<nvme_driver::Namespace, InnerError>>),
@@ -146,13 +145,26 @@ mod namespace {
         Shutdown(Rpc<NvmeDriverShutdownOptions, ()>),
     }
 
-    #[derive(Inspect)]
-    /// Owns a single instance of an nvme driver.
     pub struct NvmeDriverManager {
-        #[inspect(skip)]
         task: Task<()>,
         pci_id: String,
         pub client: NvmeDriverManagerClient,
+    }
+
+    impl Inspect for NvmeDriverManager {
+        fn inspect(&self, req: inspect::Request<'_>) {
+            let mut resp = req.respond();
+            // Pull out the field that force loads a driver on a device and handle
+            // it separately.
+            resp.child("pci_id", |req| req.value(&self.pci_id));
+
+            // Send the remaining fields directly to the worker.
+            resp.merge(inspect::adhoc(|req| {
+                self.client
+                    .sender
+                    .send(NvmeDriverRequest::Inspect(req.defer()))
+            }));
+        }
     }
 
     impl NvmeDriverManager {
@@ -169,6 +181,7 @@ mod namespace {
             is_isolated: bool,
             save_restore_supported: bool,
             dma_client_spawner: DmaClientSpawner,
+            device: Option<nvme_driver::NvmeDriver<VfioDevice>>,
         ) -> Result<Self, InnerError> {
             // todo: dedicate a vp for each instance of this
             // todo: deal with inspect
@@ -183,43 +196,7 @@ mod namespace {
                 nvme_always_flr,
                 is_isolated,
                 dma_client_spawner,
-                driver: None,
-            };
-            let task = driver.spawn("nvme-driver-manager", async move { worker.run(recv).await });
-            Ok(Self {
-                task,
-                pci_id: pci_id.into(),
-                client: NvmeDriverManagerClient {
-                    pci_id: pci_id.into(),
-                    sender: send,
-                },
-            })
-        }
-
-        /// Creates the [`NvmeController`].
-        pub fn new_restored(
-            driver_source: &VmTaskDriverSource,
-            pci_id: &str,
-            vp_count: u32,
-            nvme_always_flr: bool,
-            is_isolated: bool,
-            dma_client_spawner: DmaClientSpawner,
-            device: nvme_driver::NvmeDriver<VfioDevice>,
-        ) -> Result<Self, InnerError> {
-            // todo: dedicate a vp for each instance of this
-            // todo: deal with inspect
-            let (send, recv) = mesh::channel();
-            let driver = driver_source.simple();
-
-            let mut worker = NvmeDriverManagerWorker {
-                driver_source: driver_source.clone(),
-                pci_id: pci_id.into(),
-                vp_count,
-                save_restore_supported: true, // restored state always supports save/restore todo: assert this is correct
-                nvme_always_flr,
-                is_isolated,
-                dma_client_spawner,
-                driver: Some(device),
+                driver: device,
             };
             let task = driver.spawn("nvme-driver-manager", async move { worker.run(recv).await });
             Ok(Self {
@@ -343,6 +320,7 @@ mod namespace {
                 // Setting up a namespace should be relatively fast, only limited by the time taken
                 // to issue an `IDENTIFY NVME NAMESPACE` command.
                 match req {
+                    NvmeDriverRequest::Inspect(deferred) => deferred.inspect(&self),
                     NvmeDriverRequest::LoadDriver(rpc) => {
                         rpc.handle(async |_| {
                             tracing::trace!(
@@ -350,13 +328,14 @@ mod namespace {
                                 pci_id = self.pci_id
                             );
 
-                            // REVIEW(mattkur): Replace assert! with proper error handling
-                            // This assert can panic in production if called incorrectly. Consider:
-                            // if self.driver.is_some() {
-                            //     return Err(InnerError::DriverAlreadyLoaded { pci_id: self.pci_id.clone() });
-                            // }
-                            assert!(self.driver.is_none(), "nvme driver manager worker load driver called while driver is already loaded");
-                            let dma_client = self.dma_client_spawner
+                            // Multiple threads could have raced to call this driver.
+                            // Just let the winning thread create the driver.
+                            if self.driver.is_some() {
+                                return Ok(());
+                            }
+
+                            let dma_client = self
+                                .dma_client_spawner
                                 .new_client(DmaClientParameters {
                                     device_name: format!("nvme_{}", self.pci_id),
                                     lower_vtl_policy: LowerVtlPermissionPolicy::Any,
@@ -376,7 +355,8 @@ mod namespace {
                                 self.nvme_always_flr,
                                 self.is_isolated,
                                 dma_client,
-                            ).await?;
+                            )
+                            .await?;
                             self.driver = Some(driver);
 
                             Ok(())
@@ -392,8 +372,8 @@ mod namespace {
                         rpc.handle(async |nsid| {
                             // REVIEW(mattkur): CRITICAL - Replace unwrap() with proper error handling
                             // This can panic if driver is None during shutdown race condition. Consider:
-                            // let driver = self.driver.as_ref().ok_or(InnerError::DriverNotLoaded { 
-                            //     pci_id: self.pci_id.clone() 
+                            // let driver = self.driver.as_ref().ok_or(InnerError::DriverNotLoaded {
+                            //     pci_id: self.pci_id.clone()
                             // })?;
                             // driver.namespace(nsid).await.map_err(|source| InnerError::Namespace { nsid, source })
                             self.driver
@@ -620,9 +600,6 @@ impl NvmeManagerClient {
 struct NvmeManagerWorker {
     #[inspect(skip)]
     driver_source: VmTaskDriverSource,
-    // TODO(mattkur): This type is overly complex - Arc<Option<T>> suggests architectural issues
-    // Consider: HashMap<String, NvmeDriverManager> with a separate shutdown tracking mechanism
-    /// The list of loaded devices. Gain write access to gain exclusive access to add a new driver (but don't hold the write lock while doing so).
     #[inspect(skip)]
     devices: RwLock<HashMap<String, NvmeDriverManager>>,
     /// Whether this worker is shutting down.
@@ -809,12 +786,11 @@ impl NvmeManagerWorker {
     }
 
     async fn load_driver(&mut self, pci_id: String) -> Result<(), InnerError> {
-        // review: ensure that this memory order is correct.
         if self.shutdown.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(InnerError::ShuttingDown);
         }
 
-        // fast path: check if there's already a driver.
+        // If the driver is already loaded, we can just return.
         {
             let guard = self.devices.read();
             if guard.get(&pci_id).is_some() {
@@ -824,40 +800,43 @@ impl NvmeManagerWorker {
         }
 
         // Now we don't think there is a driver yet, so we need to create one. Get exclusive access
-        // to update the hash map.
+        // to update the hash map. If a shutdown call comes in while the lock is not held, then
+        // this code will add an entry for the device in the hashmap, but the `load_driver` call
+        // will return an appropriate error.
         //
-        // Note: `client` exists outside of the devices' write lock. This is safe:
+        // Note: `client` exists outside of the devices write lock. This is safe:
         // the mesh client will fail appropriately if shutdown comes in between inserting
         // this entry and the call to `load_driver()`.
         let client = {
-            // todo: can shutdown flag be set in between ^^ and vv ?
             let mut guard = self.devices.write();
 
-            if guard.get(&pci_id).is_some() {
+            if let Some(driver) = guard.get(&pci_id) {
                 // Some other thread beat us to it between dropping the read lock and acquiring the write lock.
-                return Ok(());
-            }
+                driver.client().clone()
+            } else {
+                // We're first! Create a new driver manager and place it in the map.
+                match guard.entry(pci_id.to_owned()) {
+                    hash_map::Entry::Occupied(_) => unreachable!(), // We checked above that this entry does not exist.
+                    hash_map::Entry::Vacant(entry) => {
+                        let driver = NvmeDriverManager::new(
+                            &self.driver_source,
+                            &pci_id,
+                            self.vp_count,
+                            self.nvme_always_flr,
+                            self.is_isolated,
+                            self.save_restore_supported,
+                            self.dma_client_spawner.clone(),
+                            None, // No device yet
+                        )?;
 
-            // We're first!
-            // Create a new driver manager and place it in the map.
-            match guard.entry(pci_id.to_owned()) {
-                hash_map::Entry::Occupied(_) => unreachable!(), // We checked above that this entry does not exist.
-                hash_map::Entry::Vacant(entry) => {
-                    let driver = NvmeDriverManager::new(
-                        &self.driver_source,
-                        &pci_id,
-                        self.vp_count,
-                        self.nvme_always_flr,
-                        self.is_isolated,
-                        self.save_restore_supported,
-                        self.dma_client_spawner.clone(),
-                    )?;
-
-                    entry.insert(driver).client().clone()
+                        entry.insert(driver).client().clone()
+                    }
                 }
             }
         };
 
+        // At this point, there may be multiple threads who will execute this call. That's fine: `load_driver`
+        // is idempotent.
         client.load_driver().await
     }
 
@@ -962,14 +941,15 @@ impl NvmeManagerWorker {
 
             restored_devices.insert(
                 disk.pci_id.clone(),
-                NvmeDriverManager::new_restored(
+                NvmeDriverManager::new(
                     &self.driver_source,
                     &pci_id,
                     self.vp_count,
                     self.nvme_always_flr,
                     self.is_isolated,
+                    true, // save_restore_supported is always `true` when restoring. TODO: validate
                     self.dma_client_spawner.clone(),
-                    nvme_driver,
+                    Some(nvme_driver),
                 )?,
             );
         }
