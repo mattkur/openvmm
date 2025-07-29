@@ -24,6 +24,7 @@ use mesh::rpc::RpcSend;
 use openhcl_dma_manager::AllocationVisibility;
 use openhcl_dma_manager::DmaClientParameters;
 use openhcl_dma_manager::DmaClientSpawner;
+use openhcl_dma_manager::DmaClientSpawnerTrait;
 use openhcl_dma_manager::LowerVtlPermissionPolicy;
 use pal_async::task::Spawn;
 use pal_async::task::Task;
@@ -34,6 +35,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use thiserror::Error;
 use tracing::Instrument;
+use user_driver::DeviceBacking;
 use user_driver::vfio::PciDeviceResetMethod;
 use user_driver::vfio::VfioDevice;
 use user_driver::vfio::vfio_set_device_reset_method;
@@ -71,10 +73,138 @@ enum InnerError {
     DeviceManagerShutdown(#[from] RpcError), // todo: not quite right, since this will swallow an RpcError::Call.
 }
 
+pub trait NvmeDriverTrait<V: DeviceBacking>: Inspect + Send + Sync {
+    /// Initialize a new device
+    async fn init(
+        &mut self,
+        driver_source: &VmTaskDriverSource,
+        vp_count: u32,
+        device: V,
+        is_isolated: bool,
+    ) -> anyhow::Result<()>;
+
+    /// Get a single namespace from the device
+    async fn namespace(&self, nsid: u32) -> Result<nvme_driver::Namespace, InnerError>;
+
+    /// Save the state of the NVMe driver, including all namespaces.
+    async fn save(&mut self) -> Result<nvme_driver::NvmeDriverSavedState, anyhow::Error>;
+
+    /// Restore the state of the NVMe driver from a saved state.
+    async fn restore(
+        &mut self,
+        driver_source: &VmTaskDriverSource,
+        vp_count: u32,
+        device: V,
+        saved_state: &nvme_driver::NvmeDriverSavedState,
+        is_isolated: bool,
+    ) -> Result<(), InnerError>;
+
+    /// Shutdown the NVMe driver.
+    async fn shutdown(&mut self);
+
+    fn update_servicing_flags(&mut self, do_not_restart: bool);
+}
+
+pub trait CreateNvmeDriverFn<N, V>:
+    AsyncFn(
+        &VmTaskDriverSource,
+        &str,
+        u32,
+        bool,
+        bool,
+        Arc<dyn user_driver::DmaClient>,
+    ) -> Result<N, InnerError>
+    + Send
+    + 'static
+where
+    N: NvmeDriverTrait<V> + Inspect + Send + Sync + 'static, // nvme_driver::NvmeDriver<VfioDevice>
+    V: DeviceBacking + Send + Sync + 'static,
+{
+}
+
+#[derive(Inspect)]
+struct DefaultNvmeController {
+    device: Option<nvme_driver::NvmeDriver<VfioDevice>>,
+}
+
+impl NvmeDriverTrait<VfioDevice> for DefaultNvmeController {
+    /// Initialize a new device
+    async fn init(
+        &mut self,
+        driver_source: &VmTaskDriverSource,
+        vp_count: u32,
+        device: VfioDevice,
+        is_isolated: bool,
+    ) -> anyhow::Result<()> {
+        if let Ok(d) =
+            nvme_driver::NvmeDriver::new(driver_source, vp_count, device, is_isolated).await
+        {
+            self.device = Some(d);
+        }
+        Ok(())
+    }
+
+    async fn namespace(&self, nsid: u32) -> Result<nvme_driver::Namespace, InnerError> {
+        self.device
+            .as_ref()
+            .expect("NVMe driver not initialized")
+            .namespace(nsid)
+            .await
+            .map_err(|source| InnerError::Namespace { nsid, source })
+    }
+
+    async fn save(&mut self) -> Result<nvme_driver::NvmeDriverSavedState, anyhow::Error> {
+        self.device
+            .as_mut()
+            .expect("NVMe driver not initialized")
+            .save()
+            .await
+            .context("failed to save NVMe driver state")
+    }
+
+    async fn restore(
+        &mut self,
+        driver_source: &VmTaskDriverSource,
+        vp_count: u32,
+        device: VfioDevice,
+        saved_state: &nvme_driver::NvmeDriverSavedState,
+        is_isolated: bool,
+    ) -> Result<(), InnerError> {
+        if let Ok(d) = nvme_driver::NvmeDriver::restore(
+            driver_source,
+            vp_count,
+            device,
+            saved_state,
+            is_isolated,
+        )
+        .await
+        {
+            self.device = Some(d);
+        }
+        Ok(())
+    }
+
+    async fn shutdown(&mut self) {
+        self.device
+            .take()
+            .expect("NVMe driver not initialized")
+            .shutdown()
+            .await
+    }
+
+    fn update_servicing_flags(&mut self, do_not_restart: bool) {
+        self.device
+            .as_mut()
+            .expect("NVMe driver not initialized")
+            .update_servicing_flags(do_not_restart)
+    }
+}
+
 mod namespace {
     use super::*;
     use inspect::Deferred;
     use nvme_driver::NvmeDriverSavedState;
+    use openhcl_dma_manager::DmaClientSpawnerTrait;
 
     #[derive(Debug, Clone)]
     pub struct NvmeDriverShutdownOptions {
@@ -124,16 +254,23 @@ mod namespace {
         }
 
         /// Creates the [`NvmeController`].
-        pub fn new(
+        pub fn new<D, N, V, F>(
             driver_source: &VmTaskDriverSource,
             pci_id: &str,
             vp_count: u32,
             nvme_always_flr: bool,
             is_isolated: bool,
             save_restore_supported: bool,
-            dma_client_spawner: DmaClientSpawner,
-            device: Option<nvme_driver::NvmeDriver<VfioDevice>>,
-        ) -> Result<Self, InnerError> {
+            dma_client_spawner: D,
+            device: Option<N>,
+            create_driver_fn: F,
+        ) -> Result<Self, InnerError>
+        where
+            D: DmaClientSpawnerTrait + Send + Sync + 'static,
+            N: NvmeDriverTrait<V> + Inspect + Send + Sync + 'static, // nvme_driver::NvmeDriver<VfioDevice>
+            V: DeviceBacking + Send + Sync + 'static,                // e.g. VfioDevice
+            F: CreateNvmeDriverFn<N, V>,
+        {
             // todo: dedicate a vp for each instance of this
             // todo: deal with inspect
             let (send, recv) = mesh::channel();
@@ -148,6 +285,8 @@ mod namespace {
                 is_isolated,
                 dma_client_spawner,
                 driver: device,
+                create_driver_fn,
+                _marker: std::marker::PhantomData::<V>,
             };
             let task = driver.spawn("nvme-driver-manager", async move { worker.run(recv).await });
             Ok(Self {
@@ -236,7 +375,13 @@ mod namespace {
     }
 
     #[derive(Inspect)]
-    struct NvmeDriverManagerWorker {
+    struct NvmeDriverManagerWorker<D, N, V, F>
+    where
+        D: DmaClientSpawnerTrait,
+        N: NvmeDriverTrait<V> + Inspect + Send + Sync + 'static, // nvme_driver::NvmeDriver<VfioDevice>
+        V: DeviceBacking,                                        // e.g. VfioDevice
+        F: CreateNvmeDriverFn<N, V>,
+    {
         #[inspect(skip)]
         driver_source: VmTaskDriverSource,
         pci_id: String,
@@ -247,11 +392,21 @@ mod namespace {
         /// If this VM is isolated or not. This influences DMA client allocations.
         is_isolated: bool,
         #[inspect(skip)]
-        dma_client_spawner: DmaClientSpawner,
-        driver: Option<nvme_driver::NvmeDriver<VfioDevice>>,
+        dma_client_spawner: D,
+        driver: Option<N>,
+        #[inspect(skip)]
+        create_driver_fn: F,
+        #[inspect(skip)]
+        _marker: std::marker::PhantomData<V>,
     }
 
-    impl NvmeDriverManagerWorker {
+    impl<D, N, V, F> NvmeDriverManagerWorker<D, N, V, F>
+    where
+        D: DmaClientSpawnerTrait,
+        N: NvmeDriverTrait<V> + Inspect + Send + Sync + 'static, // nvme_driver::NvmeDriver<VfioDevice>
+        V: DeviceBacking + Send + Sync + 'static,                // e.g. VfioDevice
+        F: CreateNvmeDriverFn<N, V>,
+    {
         async fn run(&mut self, mut recv: mesh::Receiver<NvmeDriverRequest>) {
             loop {
                 let Some(req) = recv.next().await else {
@@ -293,7 +448,7 @@ mod namespace {
                                 })
                                 .map_err(InnerError::DmaClient)?;
 
-                            let driver = create_nvme_device(
+                            let driver = (self.create_driver_fn)(
                                 &self.driver_source,
                                 &self.pci_id,
                                 self.vp_count,
@@ -326,7 +481,6 @@ mod namespace {
                                 .unwrap() // todo
                                 .namespace(nsid)
                                 .await
-                                .map_err(|source| InnerError::Namespace { nsid, source })
                         })
                         .await
                     }
@@ -410,19 +564,25 @@ impl Inspect for NvmeManager {
     }
 }
 
-impl NvmeManager {
-    pub fn new(
+impl<D, N, V, F> NvmeManager<D, N, V, F>
+where
+    D: DmaClientSpawnerTrait,
+    N: NvmeDriverTrait<V> + Inspect + Send + Sync + 'static, // nvme_driver::NvmeDriver<VfioDevice>
+    V: DeviceBacking + Send + Sync + 'static,                // e.g. VfioDevice
+    F: CreateNvmeDriverFn<N, V>,
+{
+    pub fn new<D, N, V, F>(
         driver_source: &VmTaskDriverSource,
         vp_count: u32,
         save_restore_supported: bool,
         nvme_always_flr: bool,
         is_isolated: bool,
         saved_state: Option<NvmeSavedState>,
-        dma_client_spawner: DmaClientSpawner,
+        dma_client_spawner: D,
     ) -> Self {
         let (send, recv) = mesh::channel();
         let driver = driver_source.simple();
-        let mut worker = NvmeManagerWorker {
+        let mut worker = NvmeManagerWorker::<D, N, V, F> {
             driver_source: driver_source.clone(),
             devices: RwLock::new(HashMap::new()),
             shutdown: AtomicBool::new(false),
@@ -435,7 +595,7 @@ impl NvmeManager {
         let task = driver.spawn("nvme-manager", async move {
             // Restore saved data (if present) before async worker thread runs.
             if let Some(s) = saved_state.as_ref() {
-                if let Err(e) = NvmeManager::restore(&mut worker, s)
+                if let Err(e) = NvmeManager::<D, N, V, F>::restore(&mut worker, s)
                     .instrument(tracing::info_span!("nvme_manager_restore"))
                     .await
                 {
@@ -486,7 +646,7 @@ impl NvmeManager {
 
     /// Restore NVMe manager's state after servicing.
     async fn restore(
-        worker: &mut NvmeManagerWorker,
+        worker: &mut NvmeManagerWorker<D, N, V, F>,
         saved_state: &NvmeSavedState,
     ) -> anyhow::Result<()> {
         worker
@@ -542,7 +702,13 @@ impl NvmeManagerClient {
 }
 
 #[derive(Inspect)]
-struct NvmeManagerWorker {
+struct NvmeManagerWorker<D, N, V, F>
+where
+    D: DmaClientSpawnerTrait,
+    N: NvmeDriverTrait<V> + 'static, // nvme_driver::NvmeDriver<VfioDevice>
+    V: DeviceBacking + Send + Sync + 'static, // e.g. VfioDevice
+    F: CreateNvmeDriverFn<N, V>,
+{
     #[inspect(skip)]
     driver_source: VmTaskDriverSource,
     #[inspect(skip)]
@@ -556,7 +722,9 @@ struct NvmeManagerWorker {
     /// If this VM is isolated or not. This influences DMA client allocations.
     is_isolated: bool,
     #[inspect(skip)]
-    dma_client_spawner: DmaClientSpawner,
+    dma_client_spawner: D,
+    #[inspect(skip)]
+    create_driver_fn: F,
 }
 
 async fn create_nvme_device(
@@ -645,7 +813,13 @@ async fn try_create_nvme_device(
         .map_err(InnerError::DeviceInitFailed)
 }
 
-impl NvmeManagerWorker {
+impl<D, N, V, F> NvmeManagerWorker<D, N, V, F>
+where
+    D: DmaClientSpawnerTrait,
+    N: NvmeDriverTrait<V> + Inspect + Send + Sync + 'static, // nvme_driver::NvmeDriver<VfioDevice>
+    V: DeviceBacking + Send + Sync + 'static,                // e.g. VfioDevice
+    F: CreateNvmeDriverFn<N, V>,
+{
     async fn run(&mut self, mut recv: mesh::Receiver<Request>) {
         let (join_span, nvme_keepalive) = loop {
             let Some(req) = recv.next().await else {
@@ -769,7 +943,8 @@ impl NvmeManagerWorker {
                             self.is_isolated,
                             self.save_restore_supported,
                             self.dma_client_spawner.clone(),
-                            None, // No device yet
+                            None::<N>, // No device yet
+                            self.create_driver_fn,
                         )?;
 
                         Ok(entry.insert(driver).client().clone())
@@ -896,6 +1071,7 @@ impl NvmeManagerWorker {
                     true, // save_restore_supported is always `true` when restoring. TODO: validate
                     self.dma_client_spawner.clone(),
                     Some(nvme_driver),
+                    self.create_driver_fn,
                 )?,
             );
         }

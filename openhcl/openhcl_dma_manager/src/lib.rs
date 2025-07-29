@@ -396,14 +396,20 @@ impl OpenhclDmaManager {
 }
 
 /// A spawner for creating DMA clients.
+pub trait DmaClientSpawnerTrait {
+    /// Creates a new DMA client with the given parameters.
+    fn new_client(&self, params: DmaClientParameters) -> anyhow::Result<Arc<OpenhclDmaClient>>;
+}
+
+/// A spawner for creating DMA clients.
 #[derive(Clone)]
 pub struct DmaClientSpawner {
     inner: Arc<DmaManagerInner>,
 }
 
-impl DmaClientSpawner {
+impl DmaClientSpawnerTrait for DmaClientSpawner {
     /// Creates a new DMA client with the given parameters.
-    pub fn new_client(&self, params: DmaClientParameters) -> anyhow::Result<Arc<OpenhclDmaClient>> {
+    fn new_client(&self, params: DmaClientParameters) -> anyhow::Result<Arc<OpenhclDmaClient>> {
         self.inner.new_dma_client(params)
     }
 }

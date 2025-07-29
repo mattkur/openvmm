@@ -99,6 +99,7 @@ use openhcl_attestation_protocol::igvm_attest::get::runtime_claims::AttestationV
 use openhcl_dma_manager::AllocationVisibility;
 use openhcl_dma_manager::DmaClientParameters;
 use openhcl_dma_manager::DmaClientSpawner;
+use openhcl_dma_manager::DmaClientSpawnerTrait;
 use openhcl_dma_manager::LowerVtlPermissionPolicy;
 use openhcl_dma_manager::OpenhclDmaManager;
 use pal_async::DefaultDriver;
