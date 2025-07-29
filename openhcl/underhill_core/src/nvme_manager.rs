@@ -43,55 +43,6 @@ use vm_resource::ResourceResolver;
 use vm_resource::kind::DiskHandleKind;
 use vmcore::vm_task::VmTaskDriverSource;
 
-/*
-# NVMe Manager Multi-Threading Refactor - Status Report
-
-## ✅ COMPLETED - Major Architectural Improvements (95%)
-- ✅ **Eliminated complex type structure** - Replaced `Arc<RwLock<HashMap<String, Arc<Option<T>>>>>` with clean `RwLock<HashMap<String, T>>` + `AtomicBool`
-- ✅ **Fixed all Send trait issues** - Implemented proper clone-and-release patterns for async safety
-- ✅ **Thread-safe shutdown logic** - Clean coordination between manager and workers with proper lock scoping
-- ✅ **Production-ready lock management** - Nested scopes and explicit lifetime control eliminate race conditions
-- ✅ **Async-safe architecture** - All compilation errors resolved, no more Send trait violations
-- ✅ **Clean separation of concerns** - NvmeDriverManager with mesh RPC communication per controller
-- ✅ **Smart double-checked locking** - Fast-path optimization with proper race condition handling
-- ✅ **Proper error handling foundation** - InnerError enum with comprehensive error variants
-
-## 🔧 REMAINING TASKS - Final 5% (Priority Order)
-1. **🛡️ CRITICAL: Replace unwrap()/expect() calls (Lines identified in code review)**
-   - Line ~370: `assert!` → proper `DriverAlreadyLoaded` error handling
-   - Line ~408: `unwrap()` in GetNamespace → `ok_or()` pattern for `DriverNotLoaded`
-   - Line ~418: `unwrap()` in Save handler → proper error propagation with `anyhow::anyhow!`
-   - Line ~430: `expect()` in Shutdown → graceful error handling with logging
-   - **Add error variants**: `DriverAlreadyLoaded`, `DriverNotLoaded`
-
-2. **🧹 Minor cleanup tasks**
-   - Remove unused import comment (x86defs::IdtEntry64) ✅ DONE
-   - Update TODO(mattkur) → REVIEW(mattkur) comments for consistency
-
-## 📊 PROGRESS ASSESSMENT
-- **Architecture**: ✅ Complete - Clean, maintainable design achieved
-- **Thread Safety**: ✅ Complete - All Send trait issues resolved
-- **Lock Management**: ✅ Complete - Production-ready patterns implemented
-- **Error Handling**: 🔧 95% complete - Just need to replace remaining panic-prone calls
-- **Code Quality**: ✅ Excellent - Follows Rust best practices and OpenVMM standards
-
-## 🎯 EXCELLENT DESIGN ACHIEVEMENTS
-- ✨ **Type Simplification**: Eliminated complex `Arc<Option<T>>` patterns
-- ✨ **Async Safety**: Clone-and-release pattern for holding locks across await points
-- ✨ **Clean Architecture**: Actor pattern with mesh RPC for inter-component communication
-- ✨ **Race Condition Handling**: Proper double-checked locking with shutdown coordination
-- ✨ **Memory Safety**: Eliminated most panic risks, just need final unwrap() cleanup
-
-## READY FOR PRODUCTION
-Once the remaining unwrap()/expect() calls are replaced with proper error handling,
-this refactor will be **100% production-ready** with:
-- Zero panic risks in normal operation
-- Thread-safe concurrent access patterns
-- Clean shutdown without race conditions
-- Maintainable, idiomatic Rust code
-- Full compliance with OpenVMM safety requirements
-*/
-
 #[derive(Debug, Error)]
 #[error("nvme device {pci_id} error")]
 pub struct NamespaceError {
@@ -216,18 +167,8 @@ mod namespace {
             //
             // if self.nvme_keepalive { return }
 
-            // todo: gracefully handle case where shutdown is already called
-            // (but that code path cannot happen by construction, today)
-            // REVIEW(mattkur): Replace expect() with proper error handling
-            // This can panic if the RPC call fails. Consider:
-            // match self.client().sender.call(NvmeDriverRequest::Shutdown, opts.clone()).await {
-            //     Ok(_) => {},
-            //     Err(e) => {
-            //         tracing::warn!("nvme driver manager already shut down: {}", e);
-            //         return;
-            //     }
-            // }
-            self.client()
+            if let Err(e) = self
+                .client()
                 .sender
                 .call(NvmeDriverRequest::Shutdown, opts.clone())
                 .instrument(tracing::info_span!(
@@ -237,7 +178,13 @@ mod namespace {
                     skip_device_shutdown = opts.skip_device_shutdown
                 ))
                 .await
-                .expect("nvme driver manager is shut down"); // <-- when driver manager is already shutdown
+            {
+                tracing::warn!(
+                    pci_id = self.pci_id,
+                    error = &e as &dyn std::error::Error,
+                    "nvme driver manager already shut down"
+                );
+            }
 
             self.task.await;
         }
@@ -275,8 +222,6 @@ mod namespace {
         }
 
         pub(crate) async fn save(&self) -> Result<NvmeDriverSavedState, anyhow::Error> {
-            // todo: gracefully handle case where shutdown is already called
-            // (but that code path cannot happen by construction, today)
             Ok(self
                 .sender
                 .call(NvmeDriverRequest::Save, ())
@@ -748,17 +693,12 @@ impl NvmeManagerWorker {
             }
         };
 
-        // When nvme_keepalive flag is set then this block is unreachable
-        // because the Shutdown request is never sent. // todo: <-- this was an existing comment. Is it true that we never get a Shutdown request?
-        //
-        // Tear down all the devices if nvme_keepalive is not set.
-
         // Send, and wait for completion, any shutdown requests to the individual drivers.
         // After this completes, the `NvmeDriverManager` instances will remain alive, but the
         // drivers they control will be shutdown (as appropriate).
         //
         // This is required even if `nvme_keepalive` is set, since the underlying drivers
-        // need to be told to not reset.
+        // need to be told to not reset. In that case, the shutdown is ultimately a no-op.
         let mut devices_to_shutdown: Vec<(String, NvmeDriverManager)> = Vec::new();
         {
             let mut guard = self.devices.write();
@@ -810,9 +750,12 @@ impl NvmeManagerWorker {
         let client = {
             let mut guard = self.devices.write();
 
+            // Check if another thread created the driver while we were waiting for the lock.
             if let Some(driver) = guard.get(&pci_id) {
-                // Some other thread beat us to it between dropping the read lock and acquiring the write lock.
-                driver.client().clone()
+                Ok(driver.client().clone())
+            } else if self.shutdown.load(std::sync::atomic::Ordering::SeqCst) {
+                // No driver AND there's now a shutdown in progress, just bail.
+                Err(InnerError::ShuttingDown)
             } else {
                 // We're first! Create a new driver manager and place it in the map.
                 match guard.entry(pci_id.to_owned()) {
@@ -829,14 +772,17 @@ impl NvmeManagerWorker {
                             None, // No device yet
                         )?;
 
-                        entry.insert(driver).client().clone()
+                        Ok(entry.insert(driver).client().clone())
                     }
                 }
             }
-        };
+        }?;
 
         // At this point, there may be multiple threads who will execute this call. That's fine: `load_driver`
         // is idempotent.
+        //
+        // If a shutdown came in between dropping the lock and executing this call: mesh will notice and
+        // return an error.
         client.load_driver().await
     }
 
