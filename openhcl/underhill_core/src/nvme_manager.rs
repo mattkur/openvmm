@@ -503,7 +503,7 @@ impl NvmeManagerWorker {
         // Tear down all the devices if nvme_keepalive is not set.
         if !nvme_keepalive || !self.save_restore_supported {
             async {
-                join_all(self.devices.drain().map(|(pci_id, driver)| async move {
+                join_all(self.devices.drain().map(|(pci_id, mut driver)| async move {
                     driver
                         .shutdown()
                         .instrument(tracing::info_span!("shutdown_nvme_driver", pci_id))
