@@ -1006,7 +1006,7 @@ impl NvmeManagerWorker {
                             context.save_restore_supported,
                             None, // No device yet,
                             context.factory.clone(),
-                            Some(worker_vp),
+                            None, //Some(worker_vp),
                         )?;
 
                         Ok(entry.insert(driver).client().clone())
@@ -1119,7 +1119,7 @@ impl NvmeManagerWorker {
                     true, // save_restore_supported is always `true` when restoring. TODO: validate
                     Some(nvme_driver),
                     self.context.factory.clone(),
-                    Some(*worker_vp),
+                    None, //Some(*worker_vp),
                 )?,
             );
         }
