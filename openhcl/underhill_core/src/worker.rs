@@ -44,11 +44,7 @@ use crate::loader::vtl2_config::RuntimeParameters;
 use crate::nvme_manager::NvmeDiskConfig;
 use crate::nvme_manager::NvmeDiskResolver;
 use crate::nvme_manager::NvmeManager;
-<<<<<<< HEAD
 use crate::nvme_manager::VfioNvmeDriverSpawner;
-=======
-use crate::nvme_manager::RealNvmeDriverFactory;
->>>>>>> 0e2b865c (refactor: update NVMe driver factory usage in Underhill VM initialization)
 use crate::options::TestScenarioConfig;
 use crate::reference_time::ReferenceTime;
 use crate::servicing;
