@@ -166,6 +166,7 @@ impl SimpleFlowNode for Node {
             use_relative_paths: false,
         });
 
+        let wpr_trace_file = None; // Don't use WPR tracing in this context
         let results = ctx.reqv(|v| crate::test_nextest_vmm_tests_archive::Request {
             nextest_archive_file: nextest_vmm_tests_archive,
             nextest_profile,
@@ -177,6 +178,7 @@ impl SimpleFlowNode for Node {
             extra_env,
             pre_run_deps,
             results: v,
+            wpr_trace_file,
         });
 
         // Bind the externally generated output paths together with the results

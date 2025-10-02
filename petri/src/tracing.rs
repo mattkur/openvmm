@@ -260,12 +260,15 @@ pub fn try_init_tracing(root_path: &Path) -> anyhow::Result<PetriLogSource> {
     let jsonl = File::create(root_path.join("petri.jsonl"))?;
     let logger = PetriLogSource(Arc::new(LogSourceInner {
         json_log: JsonLog(Arc::new(jsonl)),
-        root_path,
+        root_path: root_path.clone(),
         log_files: Default::default(),
         attachments: Default::default(),
     }));
 
     let petri_log = logger.log_file("petri")?;
+
+    // Check for WPR trace files and attach them
+    check_and_attach_wpr_traces(&logger)?;
 
     tracing_subscriber::fmt()
         .compact()
@@ -279,6 +282,37 @@ pub fn try_init_tracing(root_path: &Path) -> anyhow::Result<PetriLogSource> {
         .try_init()?;
 
     Ok(logger)
+}
+
+/// Check for WPR trace files and attach them to the test results
+fn check_and_attach_wpr_traces(logger: &PetriLogSource) -> anyhow::Result<()> {
+    // Check if WPR tracing was enabled
+    if let Ok(wpr_output_dir) = std::env::var("OPENVMM_WPR_OUTPUT_DIR") {
+        let wpr_dir = Path::new(&wpr_output_dir);
+        if wpr_dir.exists() {
+            // Look for ETL files in the WPR output directory
+            for entry in std::fs::read_dir(wpr_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension() == Some(std::ffi::OsStr::new("etl")) {
+                    tracing::info!("Found WPR trace file: {}", path.display());
+                    
+                    // Copy the ETL file to the test output directory
+                    if let Some(filename) = path.file_name() {
+                        let dest_path = logger.0.root_path.join(filename);
+                        if let Err(e) = std::fs::copy(&path, &dest_path) {
+                            tracing::warn!("Failed to copy WPR trace file: {}", e);
+                        } else {
+                            // Trace the attachment
+                            logger.trace_attachment(&dest_path);
+                            tracing::info!("WPR trace attached: {}", dest_path.display());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 struct PetriWriter(PetriLogFile);

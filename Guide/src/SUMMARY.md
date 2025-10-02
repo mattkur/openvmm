@@ -31,6 +31,7 @@
   - [Unit Tests](./dev_guide/tests/unit.md)
   - [VMM Tests](./dev_guide/tests/vmm.md)
     - [Azure-hosted Test Images](./dev_guide/tests/vmm/azure_images.md)
+    - [WPR Tracing](./dev_guide/tests/vmm/wpr_tracing.md)
   - [Fuzzing](./dev_guide/tests/fuzzing.md)
     - [Running Fuzzers](./dev_guide/tests/fuzzing/running.md)
     - [Writing Fuzzers](./dev_guide/tests/fuzzing/writing.md)
