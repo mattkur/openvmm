@@ -14,6 +14,8 @@
 //! Not all tests are expected to work in all scenarios. For example, Hyper-V
 //! tests do not work in WSL and TDX tests require a TDX-capable CPU.
 
+// Common helpers for the tests
+pub(crate) mod storage_helpers;
 // Tests that run on more than one architecture.
 mod multiarch;
 // Tests for the TTRPC interface that currently only run on x86-64 but can

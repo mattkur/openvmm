@@ -6,6 +6,8 @@
 //! For x86-64, it is supported using both Hyper-V and OpenVMM.
 //! For aarch64, it is supported using Hyper-V.
 
+use crate::storage_helpers::ExpectedNvmeDeviceProperties;
+use crate::storage_helpers::check_expected_nvme_driver_state;
 use disk_backend_resources::LayeredDiskHandle;
 use disk_backend_resources::layer::RamDiskLayerHandle;
 use guid::Guid;
@@ -51,12 +53,18 @@ use zerocopy::IntoBytes;
 
 const DEFAULT_SERVICING_COUNT: u8 = 3;
 
-async fn openhcl_servicing_core<T: PetriVmmBackend>(
+/// Runs the most common servicing test scenario.
+///
+/// - `additional_checks`, if provided, is called twice per servicing loop: once
+/// before the servicing event (with the lone `bool` parameter set to `false`),
+/// and once after (with the lone `bool` set to `true`).
+async fn openhcl_servicing_with_checks<T: PetriVmmBackend>(
     config: PetriVmBuilder<T>,
     openhcl_cmdline: &str,
     new_openhcl: ResolvedArtifact<impl petri_artifacts_common::tags::IsOpenhclIgvm>,
     flags: OpenHclServicingFlags,
     servicing_count: u8,
+    additional_checks: impl AsyncFn(&petri::PetriVm<T>, bool) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
     let (mut vm, agent) = config
         .with_openhcl_command_line(openhcl_cmdline)
@@ -69,18 +77,41 @@ async fn openhcl_servicing_core<T: PetriVmmBackend>(
         // Test that inspect serialization works with the old version.
         vm.test_inspect_openhcl().await?;
 
+        additional_checks(&vm, false).await?;
+
         vm.restart_openhcl(new_openhcl.clone(), flags).await?;
 
         agent.ping().await?;
 
         // Test that inspect serialization works with the new version.
         vm.test_inspect_openhcl().await?;
+
+        additional_checks(&vm, true).await?;
     }
 
     agent.power_off().await?;
     vm.wait_for_clean_teardown().await?;
 
     Ok(())
+}
+
+/// Runs the most common servicing test scenario.
+async fn openhcl_servicing_core<T: PetriVmmBackend>(
+    config: PetriVmBuilder<T>,
+    openhcl_cmdline: &str,
+    new_openhcl: ResolvedArtifact<impl petri_artifacts_common::tags::IsOpenhclIgvm>,
+    flags: OpenHclServicingFlags,
+    servicing_count: u8,
+) -> anyhow::Result<()> {
+    openhcl_servicing_with_checks(
+        config,
+        openhcl_cmdline,
+        new_openhcl,
+        flags,
+        servicing_count,
+        async |_vm, _after| Ok(()),
+    )
+    .await
 }
 
 /// Test servicing an OpenHCL VM from the current version to itself.
@@ -135,7 +166,7 @@ async fn servicing_keepalive_with_device<T: PetriVmmBackend>(
     config: PetriVmBuilder<T>,
     (igvm_file,): (ResolvedArtifact<impl petri_artifacts_common::tags::IsOpenhclIgvm>,),
 ) -> anyhow::Result<()> {
-    openhcl_servicing_core(
+    openhcl_servicing_with_checks(
         config.with_vmbus_redirect(true), // Need this to attach the NVMe device
         "OPENHCL_ENABLE_VTL2_GPA_POOL=512 OPENHCL_SIDECAR=off", // disable sidecar until #1345 is fixed
         igvm_file,
@@ -144,6 +175,17 @@ async fn servicing_keepalive_with_device<T: PetriVmmBackend>(
             ..Default::default()
         },
         1, // Test is slow with NVMe device, so only do one loop to avoid timeout
+        async |vm, _after| -> anyhow::Result<()> {
+            check_expected_nvme_driver_state(
+                vm,
+                &Some(ExpectedNvmeDeviceProperties {
+                    save_restore_supported: true,
+                    qsize: 64,
+                    nvme_keepalive: true,
+                }),
+            )
+            .await
+        },
     )
     .await
 }
