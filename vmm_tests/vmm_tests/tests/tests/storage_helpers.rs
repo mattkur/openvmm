@@ -7,6 +7,7 @@ use petri::PetriVm;
 use petri::PetriVmmBackend;
 
 pub(crate) struct ExpectedNvmeDeviceProperties {
+    pub instance_id: guid::Guid,
     pub save_restore_supported: bool,
     pub qsize: u64,
     pub nvme_keepalive: bool,
@@ -89,10 +90,13 @@ pub(crate) async fn check_expected_nvme_driver_state<T: PetriVmmBackend>(
         .next()
         .expect("device id");
 
-    // The PCI id is generated from the VMBUS instance guid for vpci devices.
-    // See `PARAVISOR_BOOT_NVME_INSTANCE`.
-    assert_eq!(found_device_id, "718b:00:00.0");
     if let Some(props) = props {
+        // The PCI id is generated from the VMBUS instance guid for vpci devices.
+        // See `PARAVISOR_BOOT_NVME_INSTANCE`.
+        let device_id =
+            (props.instance_id.data2 as u64) << 16 | (props.instance_id.data3 as u64 & 0xfff8);
+        assert_eq!(*found_device_id, format!("{0:x}:00:00.0", device_id));
+
         assert_eq!(
             devices[found_device_id]["driver"]["driver"]["qsize"]
                 .as_u64()

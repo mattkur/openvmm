@@ -18,6 +18,7 @@ mod tracing;
 mod vm;
 mod worker;
 
+pub use openvmm::PARAVISOR_BOOT_NVME_INSTANCE;
 pub use petri_artifacts_core::ArtifactHandle;
 pub use petri_artifacts_core::ArtifactResolver;
 pub use petri_artifacts_core::AsArtifactHandle;

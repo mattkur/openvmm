@@ -79,6 +79,7 @@ async fn nvme_relay_private_pool(
         config,
         "OPENHCL_ENABLE_VTL2_GPA_POOL=512",
         &Some(ExpectedNvmeDeviceProperties {
+            instance_id: petri::PARAVISOR_BOOT_NVME_INSTANCE,
             save_restore_supported: true,
             qsize: 64,
             nvme_keepalive: false,

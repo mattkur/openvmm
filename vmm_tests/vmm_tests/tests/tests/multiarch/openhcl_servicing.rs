@@ -179,6 +179,7 @@ async fn servicing_keepalive_with_device<T: PetriVmmBackend>(
             check_expected_nvme_driver_state(
                 vm,
                 &Some(ExpectedNvmeDeviceProperties {
+                    instance_id: petri::PARAVISOR_BOOT_NVME_INSTANCE,
                     save_restore_supported: true,
                     qsize: 64,
                     nvme_keepalive: true,
