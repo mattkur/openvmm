@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 use crate::NvmeDriver;
+use anyhow::Context;
 use chipset_device::mmio::ExternallyManagedMmioIntercepts;
 use chipset_device::mmio::MmioIntercept;
 use chipset_device::pci::PciConfigSpace;
@@ -42,7 +43,7 @@ use zerocopy::IntoBytes;
 
 #[async_test]
 #[should_panic(expected = "assertion `left == right` failed: cid sequence number mismatch:")]
-async fn test_nvme_command_fault(driver: DefaultDriver) {
+async fn test_nvme_command_fault_incorrect_cid(driver: DefaultDriver) {
     let mut output_cmd = Command::new_zeroed();
     output_cmd.cdw0.set_cid(1); // AER will have cid 0.
 
@@ -57,7 +58,38 @@ async fn test_nvme_command_fault(driver: DefaultDriver) {
             ),
         ),
     )
-    .await;
+    .await
+    .unwrap();
+}
+
+#[async_test]
+async fn test_nvme_command_fault_large_registration(driver: DefaultDriver) {
+    let mut output_cmd = Command::new_zeroed();
+    output_cmd.cdw0.set_cid(1); // AER will have cid 0.
+
+    let test_payload = nvme_spec::nvm::ReservationReportExtended {
+        report: nvme_spec::nvm::ReservationReport {
+            generation: 0,
+            rtype: nvme_spec::nvm::ReservationType::WRITE_EXCLUSIVE_ALL_REGISTRANTS,
+            regctl: 2.into(), // 2 registered controllers
+            ..FromZeros::new_zeroed()
+        },
+        ..FromZeros::new_zeroed()
+    };
+
+    test_nvme_fault_injection(
+        driver,
+        FaultConfiguration::new(CellUpdater::new(true).cell()).with_admin_queue_fault(
+            AdminQueueFaultConfig::new().with_completion_queue_fault(
+                CommandMatchBuilder::new()
+                    .match_cdw0_opcode(AdminOpcode::RESERVATION_REPORT.0)
+                    .build(),
+                QueueFaultBehavior::CustomPayload(output_cmd),
+            ),
+        ),
+    )
+    .await
+    .unwrap();
 }
 
 #[async_test]
@@ -424,7 +456,10 @@ async fn test_nvme_save_restore_inner(driver: DefaultDriver) {
     //     .unwrap();
 }
 
-async fn test_nvme_fault_injection(driver: DefaultDriver, fault_configuration: FaultConfiguration) {
+async fn test_nvme_fault_injection(
+    driver: DefaultDriver,
+    fault_configuration: FaultConfiguration,
+) -> anyhow::Result<()> {
     const MSIX_COUNT: u16 = 2;
     const IO_QUEUE_COUNT: u16 = 64;
     const CPU_COUNT: u32 = 64;
@@ -455,12 +490,13 @@ async fn test_nvme_fault_injection(driver: DefaultDriver, fault_configuration: F
     nvme.client() // 2MB namespace
         .add_namespace(1, disklayer_ram::ram_disk(2 << 20, false).unwrap())
         .await
-        .unwrap();
+        .context("Failed to add namespace")?;
     let device = NvmeTestEmulatedDevice::new(nvme, msi_set, dma_client.clone());
-    let driver = NvmeDriver::new(&driver_source, CPU_COUNT, device, false)
+    let driver = NvmeDriver::new(&driver_source, CPU_COUNT, device, false).await?;
+    let namespace = driver
+        .namespace(1)
         .await
-        .unwrap();
-    let namespace = driver.namespace(1).await.unwrap();
+        .context("Failed to get namespace")?;
 
     // Act: Write 1024 bytes of data to disk starting at LBA 1.
     let buf_range = OwnedRequestBuffers::linear(0, 16384, true); // 32 blocks
@@ -475,9 +511,16 @@ async fn test_nvme_fault_injection(driver: DefaultDriver, fault_configuration: F
             buf_range.buffer(&payload_mem).range(),
         )
         .await
-        .unwrap();
+        .context("failed write")?;
+
+    namespace
+        .reservation_report_extended(0)
+        .await
+        .context("failed reservation report")?;
 
     driver.shutdown().await;
+
+    Ok(())
 }
 
 #[derive(Inspect)]

@@ -37,6 +37,7 @@ pub struct IoHandler {
     sqid: u16,
     #[inspect(skip)]
     admin_response: mesh::Sender<u16>,
+    // add fault
 }
 
 #[derive(Inspect)]

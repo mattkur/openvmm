@@ -21,6 +21,8 @@ use pal::unix::affinity::get_cpu_number;
 #[cfg(windows)]
 use pal::windows::affinity::get_cpu_number;
 use std::io;
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug, Inspect)]
 pub struct NvmeDisk {

@@ -20,3 +20,24 @@ async-trait.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+chipset_device.workspace = true
+disklayer_ram.workspace = true
+guid.workspace = true
+mesh.workspace = true
+nvme_resources.workspace = true
+nvme_spec.workspace = true
+nvme_test.workspace = true
+nvme.workspace = true
+page_pool_alloc.workspace = true
+pal_async.workspace = true
+pci_core.workspace = true
+scsi_buffers.workspace = true
+test_with_tracing.workspace = true
+user_driver_emulated_mock.workspace = true
+user_driver.workspace = true
+vmcore.workspace = true
+zerocopy.workspace = true
+parking_lot.workspace = true
+anyhow.workspace = true

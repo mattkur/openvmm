@@ -1331,14 +1331,31 @@ dependencies = [
 name = "disk_nvme"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "chipset_device",
  "disk_backend",
+ "disklayer_ram",
+ "guid",
  "inspect",
+ "mesh",
+ "nvme",
  "nvme_common",
  "nvme_driver",
+ "nvme_resources",
  "nvme_spec",
+ "nvme_test",
+ "page_pool_alloc",
  "pal",
+ "pal_async",
+ "parking_lot",
+ "pci_core",
  "scsi_buffers",
+ "test_with_tracing",
+ "user_driver",
+ "user_driver_emulated_mock",
+ "vmcore",
+ "zerocopy 0.8.25",
 ]
 
 [[package]]
