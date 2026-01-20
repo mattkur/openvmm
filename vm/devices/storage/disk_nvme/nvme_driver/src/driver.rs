@@ -1368,11 +1368,13 @@ impl<D: DeviceBacking> DriverWorkerTask<D> {
         &mut self,
         worker_state: &mut WorkerState,
     ) -> anyhow::Result<NvmeDriverWorkerSavedState> {
+        tracing::info!(pci_id = ?self.device.id(), "saving nvme driver worker state: admin queue");
         let admin = match self.admin.as_ref() {
             Some(a) => Some(a.save().await?),
             None => None,
         };
 
+        tracing::info!(pci_id = ?self.device.id(), "saving nvme driver worker state: io queues");
         let io: Vec<IoQueueSavedState> = join_all(self.io.drain(..).map(async |q| q.save().await))
             .await
             .into_iter()
