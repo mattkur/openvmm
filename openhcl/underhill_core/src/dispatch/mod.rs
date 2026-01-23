@@ -599,10 +599,11 @@ impl LoadedVm {
             let mut timer = pal_async::timer::PolledTimer::new(&driver);
             // Subtract 500ms from the host provided timeout hint to allow for
             // time for the dump to be sent to the host before termination.
-            let duration = deadline
-                .checked_duration_since(std::time::Instant::now())
-                .map(|d| d.saturating_sub(Duration::from_millis(500)))
-                .unwrap_or(Duration::from_secs(0));
+            // let duration = deadline
+            //     .checked_duration_since(std::time::Instant::now())
+            //     .map(|d| d.saturating_sub(Duration::from_millis(500)))
+            //     .unwrap_or(Duration::from_secs(0));
+            let duration = Duration::from_secs(10); // MATTKUR DO NOT MERGE
             timer.sleep(duration).await;
             tracing::error!(
                 CVM_ALLOWED,
