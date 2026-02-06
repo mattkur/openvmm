@@ -51,7 +51,6 @@ description: "Task list template for feature implementation"
 - [ ] T001 Create project structure per implementation plan
 - [ ] T002 Initialize [language] project with [framework] dependencies
 - [ ] T003 [P] Configure linting and formatting tools
- - [ ] T00D Add documentation tasks: `rustdoc` examples for public APIs, module-level docs for non-trivial crates, and Guide page placeholders for high-level concepts or tools (link to Guide/src/ paths)
  - [ ] T00D Add documentation tasks: `rustdoc` examples for public APIs, module-level docs for non-trivial crates, and Guide page placeholders for high-level concepts or tools (link to Guide/src/ paths). Keep docs concise — prioritize runnable examples and short rationale notes.
 
 ---
