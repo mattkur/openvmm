@@ -14,7 +14,6 @@ use crate::KvmPartition;
 use crate::KvmPartitionInner;
 use crate::KvmProcessorBinder;
 use crate::KvmRunVpError;
-use crate::gsi;
 use crate::gsi::GsiRouting;
 use guestmem::DoorbellRegistration;
 use guestmem::GuestMemory;
@@ -37,8 +36,7 @@ use kvm::kvm_ioeventfd_flag_nr_deassign;
 use pal_event::Event;
 use parking_lot::Mutex;
 use parking_lot::RwLock;
-use pci_core::msi::MsiControl;
-use pci_core::msi::MsiInterruptTarget;
+use pci_core::msi::SignalMsi;
 use std::convert::Infallible;
 use std::future::poll_fn;
 use std::io;
@@ -329,6 +327,9 @@ impl ProtoPartition for KvmProtoPartition<'_> {
 
             // Convert the CPUID entries and update the APIC ID in CPUID for
             // this VCPU.
+            //
+            // TODO: centralize this code, probably in the topology crate, for
+            // use by other hypervisors.
             let cpuid_entries = cpuid
                 .leaves()
                 .iter()
@@ -357,6 +358,30 @@ impl ProtoPartition for KvmProtoPartition<'_> {
                         }
                         CpuidFunction::V2ExtendedTopologyEnumeration => {
                             entry.edx = vp_info.apic_id;
+                        }
+                        CpuidFunction::ProcessorTopologyDefinition => {
+                            let eax =
+                                x86defs::cpuid::ProcessorTopologyDefinitionEax::from(entry.eax);
+                            entry.eax = eax.with_extended_apic_id(vp_info.apic_id).into();
+                            let ebx =
+                                x86defs::cpuid::ProcessorTopologyDefinitionEbx::from(entry.ebx);
+                            entry.ebx = ebx
+                                .with_compute_unit_id(
+                                    (vp_info.apic_id
+                                        % self.config.processor_topology.reserved_vps_per_socket()
+                                        / (ebx.threads_per_compute_unit() as u32 + 1))
+                                        as u8,
+                                )
+                                .into();
+                            let ecx =
+                                x86defs::cpuid::ProcessorTopologyDefinitionEcx::from(entry.ecx);
+                            entry.ecx = ecx
+                                .with_node_id(
+                                    (vp_info.apic_id
+                                        / self.config.processor_topology.reserved_vps_per_socket())
+                                        as u8,
+                                )
+                                .into();
                         }
                         _ => (),
                     }
@@ -491,8 +516,8 @@ impl Partition for KvmPartition {
         Some(self.clone())
     }
 
-    fn msi_interrupt_target(self: &Arc<Self>, _vtl: Vtl) -> Option<Arc<dyn MsiInterruptTarget>> {
-        Some(Arc::new(KvmMsiTarget(self.inner.clone())))
+    fn as_signal_msi(self: &Arc<Self>, _vtl: Vtl) -> Option<Arc<dyn SignalMsi>> {
+        Some(self.inner.clone())
     }
 
     fn caps(&self) -> &virt::PartitionCapabilities {
@@ -1342,42 +1367,8 @@ impl GuestEventPort for KvmGuestEventPort {
     }
 }
 
-#[derive(Debug)]
-struct GsiMsi {
-    gsi: gsi::GsiRoute,
-}
-
-struct KvmMsiTarget(Arc<KvmPartitionInner>);
-
-impl MsiInterruptTarget for KvmMsiTarget {
-    fn new_interrupt(&self) -> Box<dyn MsiControl> {
-        let event = Event::new();
-        let interrupt = self.0.new_route(Some(event)).expect("BUGBUG");
-        Box::new(GsiMsi { gsi: interrupt })
-    }
-}
-
-impl MsiControl for GsiMsi {
-    fn enable(&mut self, address: u64, data: u32) {
-        let request = MsiRequest { address, data };
-        let KvmMsi {
-            address_lo,
-            address_hi,
-            data,
-        } = KvmMsi::new(request);
-
-        self.gsi.enable(kvm::RoutingEntry::Msi {
-            address_lo,
-            address_hi,
-            data,
-        });
-    }
-
-    fn disable(&mut self) {
-        self.gsi.disable();
-    }
-
-    fn signal(&mut self, _address: u64, _data: u32) {
-        self.gsi.irqfd_event().unwrap().signal()
+impl SignalMsi for KvmPartitionInner {
+    fn signal_msi(&self, _rid: u32, address: u64, data: u32) {
+        self.request_msi(MsiRequest { address, data });
     }
 }
