@@ -195,3 +195,70 @@ All major unknowns from the specification have been addressed:
 - Future: May add maintainer-only config tool for governance
 
 Specification is ready for Phase 1 (Design & Contracts).
+
+---
+
+## Implementation Notes (2026-02-07)
+
+### Completed Phases
+
+**Phase 1-2 (Setup + Foundational)**: ✅ Complete
+- Created shared_utils.py with input validation, GitHub API wrappers, git helpers
+- All validation functions written with regex patterns
+- 29 tests passing across all implemented tools
+
+**Phase 3 (US5 - Status Dashboard)**: ✅ Complete
+- backport_status.py: Read-only tool for checking backport status
+- Supports multiple output formats (summary, table, json, detailed)
+- Accessible to all users, no write permissions required
+
+**Phase 4 (US1 - Cherry-Pick Tool)**: ✅ Complete
+- gen_cherrypick_prs.py: Automated cherry-pick with worktree isolation
+- Refactored to use YAML summary output
+- Conflict detection and worktree retention for investigation
+
+**Phase 5 (US2 - Relabeling)**: ✅ Complete
+- relabel_backported.py: Updates labels after successful backports
+- Dry-run by default, --update flag to apply changes
+- Title mismatch detection with --force-update-pr override
+
+### Key Implementation Decisions
+
+**Label Validation Pattern Fix**:
+- Initial pattern: `^[a-zA-Z0-9_-]+$` (rejected dots)
+- Fixed pattern: `^[a-zA-Z0-9_.-]+$` (allows `backport_1.7.2511`)
+- Discovered during test execution when `validate_label("backport_1.7.2511")` failed
+
+**Test Infrastructure**:
+- pytest configured in virtual environment
+- All tools follow same test pattern: unit tests + integration-style tests
+- Mock GitHub API responses using pytest monkeypatch
+- 29 tests total, all passing in ~0.08s
+
+### Remaining Work
+
+**Phase 6 (US3 - Staging Support)**: Not started
+- Update branch validation to handle staging/* branches
+- Extend all tools to detect backports in both release/ and staging/
+- Integration tests for staging branch workflows
+
+**Phase 7 (US4 - Dependency Analysis)**: Not started
+- analyze_pr_deps.py: Investigate why cherry-picks conflict
+- File-based and PR-based analysis modes
+- Identify missing prerequisite PRs by file modification history
+
+**Phase 8 (US6 - Workflow Wrapper)**: Not started
+- backport_workflow.py: Orchestrate complete backport cycle
+- Sequential execution: cherry-pick → wait for merges → relabel
+- Interactive prompts with abort/continue options
+
+**Phase 9 (Polish)**: Not started
+- README.md and Guide/src/dev_guide/pr_management.md
+- Cross-tool consistency (error messages, output formatting)
+- Performance testing and final constitution check
+
+### Next Session Priorities
+
+1. Phase 6 (Staging Support): Minimal code changes, high value
+2. Phase 7 (Dependency Analysis): New tool, most complex remaining work
+3. Phases 8-9: Orchestration and documentation

@@ -1,0 +1,10 @@
+[
+  {
+    "number": 2680,
+    "title": "Add worktree support",
+    "mergedAt": "2026-02-05T12:34:56Z",
+    "mergeCommit": {"oid": "abc1234"},
+    "labels": ["backport_1.7.2511"],
+    "author": {"login": "octocat"}
+  }
+]

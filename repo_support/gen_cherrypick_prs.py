@@ -3,221 +3,148 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-# Generate 1 cherry-pick PR per merged (squash) PR, targeting a release branch,
-# processing PRs in the same order they were merged (by mergedAt).
+"""Create cherry-pick PRs for merged PRs on main.
 
-# Behavior:
-# - Creates a new branch from the release branch for each PR
-# - Cherry-picks the squash merge commit (mergeCommit.oid)
-# - Pushes the branch
-# - Shows the exact PR title/body it will use (same as original PR body, with a prefix line)
-# - ASKS FOR CONFIRMATION before creating the PR on GitHub
-# - STOPS immediately if cherry-pick hits conflicts (no PR creation)
-
-# Requires:
-#   - git
-#   - GitHub CLI (gh) authenticated
-
-# Examples:
-#     # Backport specific merged PRs, sorted by merge order, to release/1.7.2511.
-#     gen_cherrypick_prs.py release/1.7.2511 2567 2525 2533 2550 2551 2602
-
-#     # Auto-load all PRs labeled backport_<release> on main and backport only the
-#     # merged ones; open/closed entries are listed as not completed/abandoned.
-#     #
-#     # This example is for the 1.7.2511 release.
-#     gen_cherrypick_prs.py --from-backport-label release/1.7.2511
+Examples:
+  python3 repo_support/gen_cherrypick_prs.py release/1.7.2511 2680 2681
+  python3 repo_support/gen_cherrypick_prs.py release/1.7.2511 --from-backport-label
+  python3 repo_support/gen_cherrypick_prs.py staging/1.7.2511 --dry-run
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import re
-import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Iterable
+
+from repo_support.shared_utils import (
+    format_actionable_message,
+    format_conflict_summary,
+    format_error,
+    git_get_upstream_remote,
+    git_merge_base,
+    git_worktree_add,
+    git_worktree_remove,
+    validate_branch_name,
+    validate_pr_number,
+)
 
 
 @dataclass(frozen=True)
-class PRInfo:
+class PullRequest:
     number: int
     title: str
     body: str
     url: str
     merged_at: datetime
     merge_sha: str
-    state: str
 
 
 @dataclass(frozen=True)
-class BackportInfo:
-    state: str  # OPEN, MERGED, CLOSED
-    url: str
-    number: int
-    merged_at: Optional[datetime]
+class Result:
+    pr_number: int
+    status: str
+    message: str
+    worktree_path: str | None = None
+    branch: str | None = None
+    cherry_pick_pr_url: str | None = None
 
 
-def run(cmd: List[str], *, check: bool = True, cwd: Optional[str] = None) -> str:
-    """Run a command and return stdout (stripped). Raises on failure if check=True."""
-    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False, cwd=cwd)
-
-    if check and p.returncode != 0:
-        stderr = p.stderr or ""
-        stdout = p.stdout or ""
+def _run_command(cmd: list[str], *, cwd: Path | None = None) -> str:
+    result = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        cwd=str(cwd) if cwd else None,
+    )
+    if result.returncode != 0:
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
         raise RuntimeError(
-            f"Command failed ({p.returncode}): {shlex.join(cmd)}\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
-        )
-
-    return (p.stdout or "").strip()
-
-
-def ensure_clean_worktree(allow_dirty: bool) -> None:
-    status = run(["git", "status", "--porcelain"])
-    if status and not allow_dirty:
-        raise SystemExit(
-            "Working tree is not clean. Commit/stash changes or re-run with --allow-dirty."
-        )
-
-
-def parse_pr_numbers(pr_args: List[str]) -> List[int]:
-    nums: List[int] = []
-    for item in pr_args:
-        s = item.strip()
-        # Accept "123", "#123", or URL containing "/pull/123"
-        if "/pull/" in s:
-            m = re.search(r"/pull/(\d+)", s)
-        else:
-            m = re.search(r"(\d+)$", s.lstrip("#"))
-        if not m:
-            raise SystemExit(f"Could not parse PR number from: {item}")
-        nums.append(int(m.group(1)))
-    # Dedup while preserving order
-    seen = set()
-    out = []
-    for n in nums:
-        if n not in seen:
-            out.append(n)
-            seen.add(n)
-    return out
-
-
-def parse_github_datetime(s: str) -> datetime:
-    # GitHub typically returns ISO8601 like "2026-01-21T22:15:03Z"
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    dt = datetime.fromisoformat(s)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-def find_backport_infos(
-    pr_number: int,
-    base_branch: str,
-    repo: Optional[str],
-    orig_title: str,
-) -> List[BackportInfo]:
-    # Heuristic: look for PRs targeting the release branch that reference the original PR by number,
-    # URL, or title. We search in multiple ways and then filter locally.
-    queries = [
-        f'base:{base_branch} "PR #{pr_number}" in:title,body',
-        f'base:{base_branch} "pull/{pr_number}" in:body',
-    ]
-    if orig_title:
-        queries.append(f'base:{base_branch} "{orig_title}" in:title')
-
-    items: List[dict] = []
-    seen_numbers: Set[int] = set()
-    for q in queries:
-        for pr in gh_pr_list_search(q, repo):
-            n = int(pr.get("number")) if pr.get("number") is not None else None
-            if n is None or n in seen_numbers:
-                continue
-            seen_numbers.add(n)
-            items.append(pr)
-
-    rx = re.compile(rf"\bPR\s*#?{re.escape(str(pr_number))}(?:\b|$)", re.IGNORECASE)
-    url_fragment = f"/pull/{pr_number}"
-    title_lc = orig_title.lower()
-
-    matches: List[BackportInfo] = []
-    for pr in items:
-        title = str(pr.get("title") or "")
-        body = str(pr.get("body") or "")
-        hay = f"{title}\n{body}"
-        if not (
-            rx.search(hay)
-            or url_fragment in hay
-            or (title_lc and title_lc in title.lower())
-            or f"(#{pr_number})" in title
-        ):
-            continue
-        merged_at_raw = pr.get("mergedAt") or ""
-        merged_at = parse_github_datetime(merged_at_raw) if merged_at_raw else None
-        matches.append(
-            BackportInfo(
-                state=str(pr.get("state") or "").upper(),
-                url=str(pr.get("url") or "").strip(),
-                number=int(pr.get("number")),
-                merged_at=merged_at,
+            "Command failed ({code}): {cmd}\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}".format(
+                code=result.returncode,
+                cmd=" ".join(cmd),
+                stdout=stdout,
+                stderr=stderr,
             )
         )
-
-    # Sort merged first (most recent), then open, then closed
-    merged = sorted(
-        [m for m in matches if m.state == "MERGED"],
-        key=lambda x: x.merged_at or datetime.min.replace(tzinfo=timezone.utc),
-        reverse=True,
-    )
-    opened = [m for m in matches if m.state == "OPEN"]
-    closed = [m for m in matches if m.state not in ("MERGED", "OPEN")]
-    return merged + opened + closed
+    return (result.stdout or "").strip()
 
 
-def gh_pr_view(pr_number: int, repo: Optional[str]) -> dict:
-    # We explicitly request body/title/mergedAt/mergeCommit so we can reuse title/body verbatim.
-    cmd = [
-        "gh", "pr", "view", str(pr_number),
-        "--json", "number,title,body,url,state,mergedAt,mergeCommit"
-    ]
-    if repo:
-        cmd.extend(["-R", repo])
-    out = run(cmd)
-    return json.loads(out)
+def _parse_pr_numbers(items: list[str]) -> list[int]:
+    numbers: list[int] = []
+    for item in items:
+        text = item.strip()
+        match = re.search(r"/pull/(\d+)", text)
+        if match:
+            numbers.append(validate_pr_number(match.group(1)))
+            continue
+        match = re.search(r"(\d+)$", text.lstrip("#"))
+        if not match:
+            raise ValueError(f"Invalid PR reference: {item}")
+        numbers.append(validate_pr_number(match.group(1)))
+    seen: set[int] = set()
+    deduped: list[int] = []
+    for number in numbers:
+        if number not in seen:
+            deduped.append(number)
+            seen.add(number)
+    return deduped
 
 
-def gh_pr_list_search(query: str, repo: Optional[str]) -> List[dict]:
+def _parse_github_datetime(value: str) -> datetime:
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _extract_merge_sha(prj: dict[str, Any]) -> str:
+    merge_commit = prj.get("mergeCommit")
+    if isinstance(merge_commit, str):
+        return merge_commit.strip()
+    if isinstance(merge_commit, dict):
+        for key in ("oid", "sha", "id"):
+            value = merge_commit.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
+def _gh_pr_view(pr_number: int, repo: str | None) -> dict[str, Any]:
     cmd = [
         "gh",
         "pr",
-        "list",
-        "--state",
-        "all",
-        "--search",
-        query,
-        "--limit",
-        "500",
+        "view",
+        str(pr_number),
         "--json",
-        "number,title,body,url,state,mergedAt",
+        "number,title,body,url,state,mergedAt,mergeCommit",
     ]
     if repo:
         cmd.extend(["-R", repo])
-    out = run(cmd)
-    if not out.strip():
-        return []
-    return json.loads(out)
+    output = _run_command(cmd)
+    if not output:
+        raise RuntimeError("Empty response from gh pr view")
+    return json.loads(output)
 
 
-def gh_pr_list_label(label: str, repo: Optional[str]) -> List[dict]:
+def _gh_pr_list_by_label(label: str, repo: str | None) -> list[dict[str, Any]]:
     cmd = [
         "gh",
         "pr",
         "list",
         "--state",
-        "all",
+        "merged",
         "--base",
         "main",
         "--label",
@@ -225,391 +152,352 @@ def gh_pr_list_label(label: str, repo: Optional[str]) -> List[dict]:
         "--limit",
         "1000",
         "--json",
-        "number,title,body,url,state,mergedAt",
+        "number,title,body,url,state,mergedAt,mergeCommit",
     ]
     if repo:
         cmd.extend(["-R", repo])
-    out = run(cmd)
-    if not out.strip():
+    output = _run_command(cmd)
+    if not output:
         return []
-    return json.loads(out)
+    return json.loads(output)
 
 
-def extract_merge_sha(prj: dict) -> str:
-    """
-    mergeCommit is commonly an object with an 'oid' field.
-    We'll try common shapes defensively.
-    """
-    mc = prj.get("mergeCommit")
-    if mc is None:
-        return ""
-    if isinstance(mc, str):
-        return mc.strip()
-    if isinstance(mc, dict):
-        for k in ("oid", "sha", "id"):
-            v = mc.get(k)
-            if isinstance(v, str) and v.strip():
-                return v.strip()
-    return ""
+def _git_fetch(remote: str = "origin") -> None:
+    _run_command(["git", "fetch", remote])
 
 
-def git_fetch(remote: str) -> None:
-    run(["git", "fetch", remote], check=True)
+def _git_checkout_new_branch(worktree_path: Path, branch: str, base: str) -> None:
+    _run_command(["git", "-C", str(worktree_path), "checkout", "-b", branch, base])
 
 
-def git_checkout_branch_from(remote: str, base_branch: str, new_branch: str) -> None:
-    # Create/reset local branch to remote/base
-    run(["git", "checkout", "-B", new_branch, f"{remote}/{base_branch}"], check=True)
+def _git_cherrypick(worktree_path: Path, commit: str) -> None:
+    _run_command(["git", "-C", str(worktree_path), "cherry-pick", commit])
 
 
-def git_cherrypick_x(sha: str) -> None:
-    # -x appends "(cherry picked from commit ...)" to the commit message
-    run(["git", "cherry-pick", "-x", sha], check=True)
+def _git_conflicted_files(worktree_path: Path) -> list[str]:
+    output = _run_command(
+        ["git", "-C", str(worktree_path), "diff", "--name-only", "--diff-filter=U"]
+    )
+    return [line.strip() for line in output.splitlines() if line.strip()]
 
 
-def git_commit_subject(sha: str) -> str:
-    return run(["git", "show", "-s", "--format=%s", sha], check=True)
+def _git_push(worktree_path: Path, branch: str, remote: str = "origin") -> None:
+    _run_command(["git", "-C", str(worktree_path), "push", "-u", remote, branch])
 
 
-def git_push(remote: str, branch: str, force: bool) -> None:
-    cmd = ["git", "push", "-u", remote, branch]
-    if force:
-        cmd.insert(2, "--force-with-lease")
-    try:
-        run(cmd, check=True)
-        return
-    except RuntimeError as e:
-        msg = str(e)
-        if force:
-            raise
-        if "non-fast-forward" in msg or "non fast-forward" in msg:
-            if confirm(
-                f"Remote branch '{branch}' is ahead on {remote}. Force-with-lease push? [y/N] "
-            ):
-                cmd = ["git", "push", "-u", "--force-with-lease", remote, branch]
-                run(cmd, check=True)
-                return
-        raise
-
-
-def gh_pr_create(
-    repo: Optional[str],
-    base: str,
-    head: str,
-    title: str,
-    body: str,
-    draft: bool,
-) -> str:
+def _gh_pr_create(repo: str | None, base: str, head: str, title: str, body: str) -> str:
     cmd = ["gh", "pr", "create", "--base", base, "--head", head, "--title", title, "--body", body]
-    if draft:
-        cmd.append("--draft")
     if repo:
         cmd.extend(["-R", repo])
-    # gh pr create prints the URL of the created PR on success.
-    return run(cmd, check=True)
+    return _run_command(cmd)
 
 
-def git_remote_url(remote: str) -> str:
-    return run(["git", "remote", "get-url", remote], check=True)
+def _branch_for_pr(version: str, pr_number: int) -> str:
+    sanitized = version.replace(".", "-")
+    return f"backport/{sanitized}/pr-{pr_number}"
 
 
-def parse_github_owner_repo(remote_url: str) -> Optional[str]:
-    # Supports: https://github.com/OWNER/REPO(.git) and git@github.com:OWNER/REPO(.git)
-    url = remote_url.strip()
-    if url.startswith("git@github.com:"):
-        path = url[len("git@github.com:") :]
-    elif url.startswith("https://github.com/"):
-        path = url[len("https://github.com/") :]
-    else:
-        return None
-    path = path.rstrip("/")
-    if path.endswith(".git"):
-        path = path[:-4]
-    if path.count("/") != 1:
-        return None
-    return path
+def _worktree_path(repo_root: Path, timestamp: str) -> Path:
+    return repo_root / ".git" / "worktrees" / f"backport-temp-{timestamp}"
 
 
-def confirm(prompt: str) -> bool:
-    # Simple interactive confirmation
-    resp = input(prompt).strip().lower()
-    return resp in ("y", "yes")
+def _format_yaml_summary(summary: dict[str, Any]) -> str:
+    lines: list[str] = []
+
+    def scalar(value: Any) -> str:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return str(value)
+        return json.dumps(str(value))
+
+    def emit(key: str, value: Any, indent: int) -> None:
+        prefix = "  " * indent
+        if isinstance(value, dict):
+            lines.append(f"{prefix}{key}:")
+            for sub_key, sub_val in value.items():
+                emit(sub_key, sub_val, indent + 1)
+            return
+        if isinstance(value, list):
+            lines.append(f"{prefix}{key}:")
+            for item in value:
+                if isinstance(item, dict):
+                    lines.append(f"{prefix}  -")
+                    for sub_key, sub_val in item.items():
+                        emit(sub_key, sub_val, indent + 2)
+                else:
+                    lines.append(f"{prefix}  - {scalar(item)}")
+            return
+        lines.append(f"{prefix}{key}: {scalar(value)}")
+
+    for summary_key, summary_value in summary.items():
+        emit(summary_key, summary_value, 0)
+    return "\n".join(lines)
+
+
+def _summarize_results(target_branch: str, results: list[Result]) -> str:
+    summary = {
+        "target_branch": target_branch,
+        "total": len(results),
+        "created": sum(1 for result in results if result.status == "success"),
+        "skipped": sum(1 for result in results if result.status == "skipped"),
+        "conflicts": sum(1 for result in results if result.status == "conflict"),
+        "errors": sum(1 for result in results if result.status == "error"),
+        "results": [
+            {
+                "pr": result.pr_number,
+                "status": result.status,
+                "message": result.message,
+                "branch": result.branch or "",
+                "worktree": result.worktree_path or "",
+                "cherry_pick_pr": result.cherry_pick_pr_url or "",
+            }
+            for result in results
+        ],
+    }
+    return _format_yaml_summary(summary)
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(
-        description="Generate cherry-pick PRs (one per merged PR) targeting a release branch, sorted by mergedAt."
+    parser = argparse.ArgumentParser(
+        description="Create cherry-pick PRs for merged PRs, using isolated worktrees."
     )
-    ap.add_argument("release_branch", help="Name of the release branch (target/base) e.g. release/1.7")
-    ap.add_argument("prs", nargs="*", help="PR numbers (e.g. 123) or #123 or PR URLs")
-    ap.add_argument("--repo", "-R", default=None, help="Optional: OWNER/REPO. If omitted, uses current repo context.")
-    ap.add_argument("--base-remote", default="upstream", help="Remote for the base branch (default: upstream)")
-    ap.add_argument("--push-remote", default="origin", help="Remote to push cherry-pick branches (default: origin)")
-    ap.add_argument("--branch-prefix", default="cherrypick", help="Prefix for new branches (default: cherrypick)")
-    ap.add_argument("--draft", action="store_true", help="Create the cherry-pick PRs as draft PRs")
-    ap.add_argument("--allow-dirty", action="store_true", help="Do not require a clean git working tree")
-    ap.add_argument("--force-push", action="store_true", help="Force-with-lease push if branch already exists remotely")
-    ap.add_argument("--dry-run", action="store_true", help="Print what would happen, but do not modify git or create PRs")
-    ap.add_argument(
+    parser.add_argument("target_branch", help="Target branch (release/X.Y.Z or staging/X.Y.Z)")
+    parser.add_argument("prs", nargs="*", help="PR numbers or URLs")
+    parser.add_argument(
         "--from-backport-label",
         action="store_true",
-        help="Load PRs from the backport_<release> label on main instead of passing PR numbers",
+        help="Discover PRs from backport_<version> label on main",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Show planned actions without side effects")
+    parser.add_argument("--no-confirm", action="store_true", help="Skip interactive confirmation prompts")
+    parser.add_argument("--keep-worktree", action="store_true", help="Keep worktree after success")
+    parser.add_argument("--force-cleanup", action="store_true", help="Remove worktree even after conflicts")
+    parser.add_argument("--repo", "-R", default=None, help="Optional owner/repo for GitHub API calls")
+    parser.add_argument(
+        "--remote",
+        default=None,
+        help="Git remote to use (auto-detected if not specified: upstream > origin)",
     )
 
-    args = ap.parse_args()
+    args = parser.parse_args()
 
-    ensure_clean_worktree(args.allow_dirty)
+    try:
+        target_branch = validate_branch_name(args.target_branch)
+        match = re.match(r"^(release|staging)/(.*)$", target_branch)
+        if not match:
+            raise ValueError(f"Invalid target branch: {target_branch}")
+        version = match.group(2)
+        pr_numbers = _parse_pr_numbers(args.prs) if args.prs else []
+        if not args.from_backport_label and not pr_numbers:
+            raise ValueError("Provide PR numbers or use --from-backport-label")
+    except ValueError as exc:
+        print(format_error(str(exc)), file=sys.stderr)
+        return 2
 
-    if not args.from_backport_label and not args.prs:
-        raise SystemExit("Must provide PR numbers, or use --from-backport-label.")
+    remote = args.remote if args.remote else git_get_upstream_remote()
 
-    pr_numbers = parse_pr_numbers(args.prs) if args.prs else []
+    try:
+        _git_fetch(remote)
+    except RuntimeError as exc:
+        print(format_error(f"Failed to fetch {remote}", details=[str(exc)]), file=sys.stderr)
+        return 3
 
-    infos: List[PRInfo] = []
-    not_completed: List[PRInfo] = []
+    prs: list[PullRequest] = []
 
-    if args.from_backport_label:
-        release_name = args.release_branch
-        m = re.match(r"^release/(.+)$", args.release_branch)
-        if m:
-            release_name = m.group(1)
-        label = f"backport_{release_name}"
-        labeled = gh_pr_list_label(label, args.repo)
-        for prj in labeled:
-            state = str(prj.get("state") or "").upper()
-            num = int(prj.get("number"))
-            title = str(prj.get("title") or "").rstrip()
-            url = str(prj.get("url") or "").strip()
-            if state == "MERGED":
-                full = gh_pr_view(num, args.repo)
-                merged_at_raw = full.get("mergedAt") or ""
+    try:
+        if args.from_backport_label:
+            label = f"backport_{version}"
+            labeled = _gh_pr_list_by_label(label, args.repo)
+            for item in labeled:
+                pr_number = validate_pr_number(item.get("number"))
+                full = _gh_pr_view(pr_number, args.repo)
+                state = str(full.get("state") or "").upper()
+                if state != "MERGED":
+                    continue
+                merged_at_raw = str(full.get("mergedAt") or "")
                 if not merged_at_raw:
-                    raise SystemExit(f"PR #{num} has no mergedAt. Aborting.")
-                merged_at = parse_github_datetime(merged_at_raw)
-                merge_sha = extract_merge_sha(full)
+                    raise RuntimeError(f"PR #{pr_number} missing mergedAt")
+                merge_sha = _extract_merge_sha(full)
                 if not merge_sha:
-                    raise SystemExit(f"PR #{num} has no merge commit SHA (mergeCommit missing). Aborting.")
-                infos.append(
-                    PRInfo(
-                        number=num,
-                        title=title,
-                        body=str(full.get("body") or "").rstrip(),
-                        url=url,
-                        merged_at=merged_at,
+                    raise RuntimeError(f"PR #{pr_number} missing merge commit")
+                prs.append(
+                    PullRequest(
+                        number=pr_number,
+                        title=str(full.get("title") or "").strip(),
+                        body=str(full.get("body") or "").strip(),
+                        url=str(full.get("url") or "").strip(),
+                        merged_at=_parse_github_datetime(merged_at_raw),
                         merge_sha=merge_sha,
-                        state=state,
                     )
                 )
-            else:
-                not_completed.append(
-                    PRInfo(
-                        number=num,
-                        title=title,
-                        body=str(prj.get("body") or "").rstrip(),
-                        url=url,
-                        merged_at=datetime.min.replace(tzinfo=timezone.utc),
-                        merge_sha="",
-                        state=state,
+        else:
+            for pr_number in pr_numbers:
+                full = _gh_pr_view(pr_number, args.repo)
+                state = str(full.get("state") or "").upper()
+                if state != "MERGED":
+                    raise RuntimeError(f"PR #{pr_number} is not merged (state={state})")
+                merged_at_raw = str(full.get("mergedAt") or "")
+                if not merged_at_raw:
+                    raise RuntimeError(f"PR #{pr_number} missing mergedAt")
+                merge_sha = _extract_merge_sha(full)
+                if not merge_sha:
+                    raise RuntimeError(f"PR #{pr_number} missing merge commit")
+                prs.append(
+                    PullRequest(
+                        number=pr_number,
+                        title=str(full.get("title") or "").strip(),
+                        body=str(full.get("body") or "").strip(),
+                        url=str(full.get("url") or "").strip(),
+                        merged_at=_parse_github_datetime(merged_at_raw),
+                        merge_sha=merge_sha,
                     )
                 )
-    else:
-        # Gather PR info first so we can sort by mergedAt.
-        for n in pr_numbers:
-            prj = gh_pr_view(n, args.repo)
+    except RuntimeError as exc:
+        print(format_error("GitHub API error", details=[str(exc)]), file=sys.stderr)
+        return 3
 
-            state = str(prj.get("state", "")).upper()
-            if state != "MERGED":
-                raise SystemExit(f"PR #{n} is not merged (state={state}). Aborting.")
+    prs.sort(key=lambda pr: pr.merged_at)
 
-            merged_at_raw = prj.get("mergedAt") or ""
-            if not merged_at_raw:
-                raise SystemExit(f"PR #{n} has no mergedAt. Aborting.")
-            merged_at = parse_github_datetime(merged_at_raw)
-
-            merge_sha = extract_merge_sha(prj)
-            if not merge_sha:
-                raise SystemExit(f"PR #{n} has no merge commit SHA (mergeCommit missing). Aborting.")
-
-            infos.append(
-                PRInfo(
-                    number=int(prj["number"]),
-                    title=str(prj.get("title") or "").rstrip(),
-                    body=str(prj.get("body") or "").rstrip(),
-                    url=str(prj.get("url") or "").strip(),
-                    merged_at=merged_at,
-                    merge_sha=merge_sha,
-                    state=state,
-                )
-            )
-
-    infos.sort(key=lambda x: x.merged_at)  # same order they were merged
-    not_completed.sort(key=lambda x: x.number)
+    results: list[Result] = []
 
     if args.dry_run:
         print("--dry-run set; no changes will be made.")
-        if infos:
-            print("The following PRs would be processed:")
-            for info in infos:
-                short_sha = info.merge_sha[:8] if info.merge_sha else ""
-                if short_sha:
-                    print(f"  #{info.number} {info.title} ({short_sha})")
-                else:
-                    print(f"  #{info.number} {info.title}")
-        if not_completed:
-            print("The following PRs were skipped because they are not yet completed:")
-            for info in not_completed:
-                print(f"  #{info.number} {info.title}")
+        for pr in prs:
+            branch = _branch_for_pr(version, pr.number)
+            print(f"Would process #{pr.number}: {pr.title} -> {branch}")
         return 0
 
-    # Make sure we have the latest release branch
-    git_fetch(args.base_remote)
+    repo_root = Path.cwd()
 
-    base_repo = args.repo
-    base_remote_repo = None
-    push_remote_repo = None
-    try:
-        base_remote_repo = parse_github_owner_repo(git_remote_url(args.base_remote))
-    except Exception:
-        base_remote_repo = None
-    try:
-        push_remote_repo = parse_github_owner_repo(git_remote_url(args.push_remote))
-    except Exception:
-        push_remote_repo = None
-
-    if base_repo is None:
-        base_repo = base_remote_repo
-    if base_repo is None:
-        print(
-            "Error: Could not determine base repo from git remotes."
-            "Pass --repo OWNER/REPO or run from within a GitHub repository.",
-            file=sys.stderr,
-        )
-        raise SystemExit("Could not determine base repo from git remotes.")
-
-    green = "\x1b[32m"
-    orange = "\x1b[38;5;208m"
-    reset = "\x1b[0m"
-
-    def status_label(state: str) -> str:
-        if state == "MERGED":
-            return f"{green}*BACKPORTED*{reset}"
-        if state == "OPEN":
-            return f"{orange}*IN PROGRESS*{reset}"
-        return "*NONE*"
-
-    backport_map: Dict[int, List[BackportInfo]] = {}
-    for info in infos:
-        backport_map[info.number] = find_backport_infos(
-            info.number, args.release_branch, base_repo, info.title
-        )
-
-    print("Will process PRs in merged order:")
-    for i, info in enumerate(infos, 1):
-        bps = backport_map.get(info.number) or []
-        print(f"  {i:02d}. #{info.number} mergedAt={info.merged_at.isoformat()} sha={info.merge_sha}")
-        print(f"      title: {info.title}")
-        if not bps:
-            print("      backport: *NONE*")
-        else:
-            if len(bps) > 1:
-                print(f"      backport: *MULTIPLE* ({len(bps)})")
-            for bp in bps:
-                label = status_label(bp.state)
-                print(f"        {label} {bp.url}")
-
-    if not_completed:
-        print("\nPending merge into main:")
-        for info in not_completed:
-            status = "pending merge into main" if info.state == "OPEN" else "abandoned"
-            print(f"  #{info.number} ({info.state.lower()}): {status}")
-            print(f"      title: {info.title}")
-            print(f"      {info.url}")
-
-    created: List[Tuple[int, str]] = []
-
-    for info in infos:
-        bps = backport_map.get(info.number) or []
-        active = [bp for bp in bps if bp.state in ("OPEN", "MERGED")]
-        if active:
-            if len(active) == 1:
-                bp = active[0]
-                print(
-                    f"Skipping PR #{info.number} (backport {bp.state.lower()}): {bp.url}"
-                )
-            else:
-                links = ", ".join(bp.url for bp in active)
-                print(
-                    f"Skipping PR #{info.number} (multiple backports in progress/merged): {links}"
-                )
-            continue
-        rel_sanitized = re.sub(r"[^A-Za-z0-9._/-]+", "-", args.release_branch).strip("-")
-        branch = f"{args.branch_prefix}/{rel_sanitized}/pr-{info.number}"
-
-        print(f"\n=== Cherry-pick PR #{info.number} -> {args.release_branch} ===")
-        print(f"Branch: {branch}")
-        print(f"Original PR: {info.url}")
-        print(f"Cherry-pick commit: {info.merge_sha}")
-
-        # Create branch from release and cherry-pick
-        git_checkout_branch_from(args.base_remote, args.release_branch, branch)
-
-        print("Cherry-picking...")
+    for pr in prs:
         try:
-            git_cherrypick_x(info.merge_sha)
-        except RuntimeError as e:
-            # Stop immediately on conflicts or any cherry-pick failure.
-            print(str(e), file=sys.stderr)
-            print("\nSTOPPING: Cherry-pick failed (likely conflicts). No PR will be created.", file=sys.stderr)
-            print("Resolve manually if you want, then you can re-run for remaining PRs.", file=sys.stderr)
-            return 2
+            if git_merge_base(pr.merge_sha, f"{remote}/{target_branch}"):
+                results.append(
+                    Result(
+                        pr_number=pr.number,
+                        status="skipped",
+                        message="Merge commit already in target branch",
+                    )
+                )
+                continue
+        except RuntimeError as exc:
+            results.append(
+                Result(pr_number=pr.number, status="error", message=f"merge-base failed: {exc}")
+            )
+            break
 
-        print(f"Pushing branch to {args.push_remote} ...")
-        git_push(args.push_remote, branch, args.force_push)
+        timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        worktree_path = _worktree_path(repo_root, timestamp)
+        branch = _branch_for_pr(version, pr.number)
 
-        head_ref = branch
-        if base_repo and push_remote_repo and base_repo != push_remote_repo:
-            fork_owner = push_remote_repo.split("/")[0]
-            head_ref = f"{fork_owner}:{branch}"
+        try:
+            git_worktree_add(worktree_path, f"{remote}/{target_branch}")
+            _git_checkout_new_branch(worktree_path, branch, f"{remote}/{target_branch}")
+        except RuntimeError as exc:
+            results.append(
+                Result(
+                    pr_number=pr.number,
+                    status="error",
+                    message=f"Failed to create worktree: {exc}",
+                    worktree_path=str(worktree_path),
+                    branch=branch,
+                )
+            )
+            break
 
-        # Use the first line of the merge commit, ensuring it includes the original PR number.
-        base_title = git_commit_subject(info.merge_sha).rstrip()
-        if re.search(r"\(#\d+\)\s*$", base_title):
-            pr_title = base_title
-        else:
-            pr_title = f"{base_title} (#{info.number})"
-        pr_body = f"Clean cherry pick of PR #{info.number}\n\n{info.body}".rstrip() + "\n"
+        try:
+            _git_cherrypick(worktree_path, pr.merge_sha)
+        except RuntimeError:
+            conflicted_files = _git_conflicted_files(worktree_path)
+            summary = format_conflict_summary(conflicted_files, worktree_path)
+            print(summary, file=sys.stderr)
+            print(
+                format_actionable_message(
+                    "Cherry-pick conflict detected.",
+                    "Conflicts require prerequisite analysis.",
+                    [
+                        f"Run: python3 -m repo_support.analyze_pr_deps --file {conflicted_files[0] if conflicted_files else '<file>'} --target {target_branch}",
+                        f"Worktree retained at {worktree_path}",
+                        f"Cleanup: git worktree remove {worktree_path}",
+                    ],
+                ),
+                file=sys.stderr,
+            )
+            if args.force_cleanup:
+                git_worktree_remove(worktree_path, force=True)
+            results.append(
+                Result(
+                    pr_number=pr.number,
+                    status="conflict",
+                    message="Cherry-pick conflict",
+                    worktree_path=str(worktree_path),
+                    branch=branch,
+                )
+            )
+            break
 
-        print("\n--- PR to be created ---")
-        print(f"Base: {args.release_branch}")
-        print(f"Head: {head_ref}")
-        print(f"Title: {pr_title}")
-        print("Body (first ~20 lines):")
-        preview_lines = pr_body.splitlines()[:20]
-        for line in preview_lines:
-            print(line)
-        if len(pr_body.splitlines()) > 20:
-            print("...")
+        try:
+            _git_push(worktree_path, branch, remote)
+            pr_title = f"{pr.title} (cherry-pick from #{pr.number})"
+            pr_body = f"Cherry-picked from #{pr.number}\n\nOriginal PR: {pr.url}\n"
+            if not args.no_confirm:
+                answer = input(f"Create cherry-pick PR for #{pr.number}? [y/N] ").strip().lower()
+                if answer not in ("y", "yes"):
+                    results.append(
+                        Result(
+                            pr_number=pr.number,
+                            status="skipped",
+                            message="User skipped PR creation",
+                            worktree_path=str(worktree_path),
+                            branch=branch,
+                        )
+                    )
+                    if not args.keep_worktree:
+                        git_worktree_remove(worktree_path, force=False)
+                    continue
+            pr_url = _gh_pr_create(args.repo, target_branch, branch, pr_title, pr_body)
+            results.append(
+                Result(
+                    pr_number=pr.number,
+                    status="success",
+                    message="Cherry-pick PR created",
+                    worktree_path=str(worktree_path),
+                    branch=branch,
+                    cherry_pick_pr_url=pr_url,
+                )
+            )
+        except RuntimeError as exc:
+            results.append(
+                Result(
+                    pr_number=pr.number,
+                    status="error",
+                    message=f"Failed to create PR: {exc}",
+                    worktree_path=str(worktree_path),
+                    branch=branch,
+                )
+            )
+            break
+        finally:
+            if not args.keep_worktree:
+                try:
+                    git_worktree_remove(worktree_path, force=False)
+                except RuntimeError:
+                    pass
 
-        if not confirm("Create this PR on GitHub? [y/N] "):
-            print("Aborting by user request. No further PRs will be created.")
-            return 0
+    print(_summarize_results(target_branch, results))
 
-        print("Creating PR on GitHub...")
-        pr_url = gh_pr_create(
-            repo=base_repo,
-            base=args.release_branch,
-            head=head_ref,
-            title=pr_title,
-            body=pr_body,
-            draft=args.draft,
+    if any(result.status in ("conflict", "error") for result in results):
+        return 3
+    if not results:
+        print(
+            format_actionable_message(
+                "No PRs processed.",
+                "No eligible merged PRs were discovered.",
+                ["Check labels and PR numbers", "Verify branch and repo arguments"],
+            )
         )
-        created.append((info.number, pr_url))
-        print(f"Created: {pr_url}")
-
-    print("\nDone. Created PRs:")
-    for n, url in created:
-        print(f"  #{n}: {url}")
-
+        return 1
     return 0
 
 

@@ -14,7 +14,7 @@ Build a suite of Python-based tools to automate PR backporting workflow across `
 4. **analyze_pr_deps.py**: Identifies missing prerequisites for failed cherry-picks (new tool, accessible to all users)
 5. **backport_workflow**: Unified wrapper to guide maintainers through complete backport cycle (new tool)
 
-Technical approach: Use git worktrees for operation isolation, GitHub CLI for API queries, and subprocess for git operations. Status tool queries GitHub API and local git; all other scripts use subprocess for git operations. All scripts accessible to general users (status tool read-only; others require write access). All scripts use standard Python 3.11+ library with no heavy external dependencies.
+Technical approach: Use git worktrees for operation isolation, GitHub CLI for API queries, and subprocess for git operations. Status tool queries GitHub API and local git; all other scripts use subprocess for git operations. Tools are accessible based on permissions: status/analysis are read-only (any reader), cherry-pick pushes to the user's fork (fork push), and relabel requires upstream write access. All scripts use standard Python 3.11+ library with no heavy external dependencies.
 
 ## Technical Context
 
@@ -75,7 +75,7 @@ All plans MUST include explicit verification for these gates taken from the Open
 - **repo_support/README.md**: Complete prerequisites (git, gh CLI, Python 3.11+), usage examples for each tool, workflow walkthrough, troubleshooting
 - **Guide/src/dev_guide/pr_management.md** (new): Conceptual guide to branch strategy, labeling conventions, when to use each tool, conflict resolution workflow
 - **Error messages**: Every error condition includes actionable guidance (what went wrong, how to fix)
-  - Example: `"Cherry-pick conflict in src/foo.rs. Run: analyze-pr-deps --file src/foo.rs --target release/1.7.2511 to find missing prerequisites. Worktree at: /path/to/worktree/"`
+  - Example: `"Cherry-pick conflict in src/foo.rs. Run: analyze_pr_deps.py --file src/foo.rs --target release/1.7.2511 to find missing prerequisites. Worktree at: /path/to/worktree/"`
 
 **✅ Build & Cross-Platform**
 - No special build steps; Python 3.11+ runs directly via system Python interpreter
@@ -97,11 +97,11 @@ All plans MUST include explicit verification for these gates taken from the Open
 - Module docstrings show real command examples with common scenarios
 
 **✅ User Access & Roles**
-- Status tool (`backport_status.py`) explicitly read-only, accessible to all users
-- Cherry-pick/relabel tools require write permissions to create branches/PRs
+- Status tool (`backport_status.py`) and dependency analysis (`analyze_pr_deps.py`) are read-only, accessible to any user with read access
+- Cherry-pick tool pushes to user's fork and opens PRs to upstream `microsoft/openvmm` — requires fork push access
+- Relabel tool requires write access to `microsoft/openvmm` (label management on upstream repo)
 - Clear error messages when user lacks required permissions
 - Future maintainer-specific features for governance/staging→release workflow
-- All documentation clarifies user roles and which tools they can access
 
 ## Project Structure
 
